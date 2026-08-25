@@ -1,0 +1,1147 @@
+<title>DataSentry</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root {
+  --bg:          #EEF3F8;
+  --surface:     #FFFFFF;
+  --surface2:    #F4F8FC;
+  --border:      #C8D8E8;
+  --border2:     #E0EBF4;
+  --text:        #0A1B2A;
+  --text2:       #4A6A82;
+  --text3:       #8AAABB;
+  --accent:      #007A65;
+  --accent-bg:   #E6F5F1;
+  --accent-vivid:#00C49A;
+  --warn:        #B45309;
+  --warn-bg:     #FEF3C7;
+  --risk:        #C0392B;
+  --risk-bg:     #FEE8E7;
+  --ok:          #15803D;
+  --ok-bg:       #DCFCE7;
+  --sidebar-bg:  #0D1E30;
+  --sidebar-text:#648CA4;
+  --sidebar-act: #FFFFFF;
+  --sidebar-pip: #00C49A;
+  --shadow:      0 1px 3px rgba(10,27,42,.08),0 4px 12px rgba(10,27,42,.05);
+  --shadow-lg:   0 4px 24px rgba(10,27,42,.14);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg:#080F18; --surface:#0D1E30; --surface2:#112438;
+    --border:#1C3350; --border2:#162840;
+    --text:#DCE9F2; --text2:#6A90AB; --text3:#3D5E72;
+    --accent:#00C49A; --accent-bg:#003D30; --accent-vivid:#00E8B8;
+    --warn:#FBB040; --warn-bg:#2D1E00;
+    --risk:#F87171; --risk-bg:#2D0A0A;
+    --ok:#4ADE80;   --ok-bg:#052210;
+    --sidebar-bg:#060D18; --sidebar-text:#4A6E85; --sidebar-act:#DCE9F2;
+    --shadow:0 1px 3px rgba(0,0,0,.3),0 4px 12px rgba(0,0,0,.2);
+    --shadow-lg:0 4px 24px rgba(0,0,0,.5);
+  }
+}
+:root[data-theme="dark"] {
+  --bg:#080F18; --surface:#0D1E30; --surface2:#112438;
+  --border:#1C3350; --border2:#162840;
+  --text:#DCE9F2; --text2:#6A90AB; --text3:#3D5E72;
+  --accent:#00C49A; --accent-bg:#003D30; --accent-vivid:#00E8B8;
+  --warn:#FBB040; --warn-bg:#2D1E00;
+  --risk:#F87171; --risk-bg:#2D0A0A;
+  --ok:#4ADE80;   --ok-bg:#052210;
+  --sidebar-bg:#060D18; --sidebar-text:#4A6E85; --sidebar-act:#DCE9F2;
+  --shadow:0 1px 3px rgba(0,0,0,.3),0 4px 12px rgba(0,0,0,.2);
+  --shadow-lg:0 4px 24px rgba(0,0,0,.5);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:'DM Sans',system-ui,sans-serif;font-size:14px;line-height:1.5;
+     color:var(--text);background:var(--bg);display:flex;min-height:100vh;
+     -webkit-font-smoothing:antialiased;}
+
+/* SIDEBAR */
+.sidebar{width:228px;min-height:100vh;background:var(--sidebar-bg);
+  display:flex;flex-direction:column;flex-shrink:0;
+  position:fixed;top:0;left:0;bottom:0;z-index:100;}
+.sidebar-logo{padding:22px 20px 18px;border-bottom:1px solid rgba(255,255,255,.06);margin-bottom:8px;}
+.wordmark{font-family:'Syne',sans-serif;font-weight:800;font-size:18px;color:#fff;letter-spacing:-.3px;}
+.wordmark span{color:var(--sidebar-pip);}
+.tagline{font-size:10px;color:var(--sidebar-text);letter-spacing:.06em;text-transform:uppercase;margin-top:2px;}
+.nav-section{padding:6px 12px 2px;font-size:9px;font-weight:600;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--sidebar-text);margin-top:8px;}
+.nav-item{display:flex;align-items:center;gap:10px;padding:8px 12px;margin:1px 8px;
+  border-radius:6px;cursor:pointer;color:var(--sidebar-text);font-size:13.5px;
+  font-weight:500;transition:background .15s,color .15s;user-select:none;}
+.nav-item:hover{background:rgba(255,255,255,.06);color:#aeccd8;}
+.nav-item.active{background:rgba(0,196,154,.12);color:var(--sidebar-act);}
+.nav-item.active .nav-icon{color:var(--sidebar-pip);}
+.nav-icon{width:16px;text-align:center;font-size:14px;flex-shrink:0;}
+.nav-badge{margin-left:auto;background:rgba(239,68,68,.25);color:#f87171;
+  font-size:10px;font-weight:600;padding:1px 6px;border-radius:10px;
+  font-family:'JetBrains Mono',monospace;}
+.sidebar-footer{margin-top:auto;padding:16px 20px;
+  border-top:1px solid rgba(255,255,255,.06);font-size:11px;color:var(--sidebar-text);}
+.status-dot{display:inline-block;width:6px;height:6px;border-radius:50%;
+  background:var(--sidebar-pip);margin-right:6px;
+  box-shadow:0 0 6px var(--sidebar-pip);animation:pulse 2s infinite;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* MAIN */
+.main{margin-left:228px;flex:1;display:flex;flex-direction:column;min-height:100vh;}
+.topbar{background:var(--surface);border-bottom:1px solid var(--border2);
+  padding:0 28px;height:56px;display:flex;align-items:center;gap:16px;
+  position:sticky;top:0;z-index:50;box-shadow:var(--shadow);}
+.topbar-title{font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--text);}
+.topbar-sub{font-size:12px;color:var(--text2);margin-left:4px;}
+.topbar-right{margin-left:auto;display:flex;align-items:center;gap:10px;}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;
+  border-radius:6px;font-family:'DM Sans',sans-serif;font-size:13px;
+  font-weight:600;cursor:pointer;border:none;transition:opacity .15s,transform .1s;}
+.btn:active{transform:scale(.98);}
+.btn-primary{background:var(--accent);color:#fff;}
+.btn-primary:hover{opacity:.88;}
+.btn-ghost{background:transparent;color:var(--text2);border:1px solid var(--border);}
+.btn-ghost:hover{background:var(--surface2);color:var(--text);}
+.page-content{padding:28px;flex:1;}
+.section{display:none;}
+.section.active{display:block;}
+.page-heading{font-family:'Syne',sans-serif;font-size:20px;font-weight:700;
+  color:var(--text);text-wrap:balance;margin-bottom:4px;}
+.page-sub{font-size:13px;color:var(--text2);margin-bottom:24px;}
+
+/* STAT CARDS */
+.stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px;}
+.stat-card{background:var(--surface);border:1px solid var(--border2);
+  padding:18px 20px;box-shadow:var(--shadow);}
+.stat-label{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--text2);margin-bottom:8px;}
+.stat-value{font-family:'Syne',sans-serif;font-size:28px;font-weight:700;
+  color:var(--text);font-variant-numeric:tabular-nums;line-height:1;}
+.stat-delta{font-size:11.5px;color:var(--text3);margin-top:6px;}
+.stat-accent{border-top:2px solid var(--accent-vivid);}
+.stat-warn{border-top:2px solid var(--warn);}
+.stat-risk{border-top:2px solid var(--risk);}
+.stat-ok{border-top:2px solid var(--ok);}
+
+/* CARDS */
+.card{background:var(--surface);border:1px solid var(--border2);box-shadow:var(--shadow);margin-bottom:20px;}
+.card-header{padding:16px 20px;border-bottom:1px solid var(--border2);
+  display:flex;align-items:center;gap:10px;}
+.card-title{font-family:'Syne',sans-serif;font-size:13.5px;font-weight:700;color:var(--text);}
+.card-meta{font-size:11.5px;color:var(--text3);margin-left:auto;}
+.card-body{padding:20px;}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px;}
+
+/* CUSTOMER CARDS */
+.customer-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-bottom:24px;}
+.customer-card{background:var(--surface);border:1px solid var(--border2);
+  padding:0;box-shadow:var(--shadow);cursor:pointer;transition:box-shadow .2s,border-color .2s;}
+.customer-card:hover{box-shadow:var(--shadow-lg);border-color:var(--accent-vivid);}
+.customer-card-top{padding:16px 18px;display:flex;align-items:flex-start;gap:12px;}
+.customer-avatar{width:40px;height:40px;border-radius:8px;display:flex;
+  align-items:center;justify-content:center;font-family:'Syne',sans-serif;
+  font-weight:800;font-size:16px;flex-shrink:0;color:#fff;}
+.customer-name{font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:var(--text);}
+.customer-id{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--text3);margin-top:2px;}
+.customer-stats{display:grid;grid-template-columns:repeat(3,1fr);
+  border-top:1px solid var(--border2);}
+.customer-stat{padding:12px 16px;text-align:center;border-right:1px solid var(--border2);}
+.customer-stat:last-child{border-right:none;}
+.customer-stat-val{font-family:'Syne',sans-serif;font-size:18px;font-weight:700;
+  color:var(--text);font-variant-numeric:tabular-nums;}
+.customer-stat-lbl{font-size:10px;color:var(--text2);text-transform:uppercase;
+  letter-spacing:.06em;margin-top:3px;}
+.customer-risk-bar{height:3px;margin:0 18px 14px;border-radius:0;background:var(--surface2);}
+.customer-risk-fill{height:100%;border-radius:0;transition:width .6s;}
+
+/* LOCATION BARS */
+.loc-row{display:flex;align-items:center;gap:12px;padding:10px 0;
+  border-bottom:1px solid var(--border2);}
+.loc-row:last-child{border-bottom:none;}
+.loc-icon{width:32px;height:32px;border-radius:6px;display:flex;align-items:center;
+  justify-content:center;font-size:15px;flex-shrink:0;}
+.loc-name{font-size:13px;font-weight:600;color:var(--text);}
+.loc-count{font-size:11.5px;color:var(--text2);}
+.loc-bar-wrap{flex:1;background:var(--surface2);height:6px;border-radius:3px;overflow:hidden;}
+.loc-bar{height:100%;border-radius:3px;transition:width .6s cubic-bezier(.4,0,.2,1);}
+.loc-files{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text);
+  font-variant-numeric:tabular-nums;min-width:70px;text-align:right;}
+
+/* PII */
+.pii-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;}
+.pii-item{display:flex;align-items:center;gap:10px;padding:10px 12px;
+  background:var(--surface2);border:1px solid var(--border2);}
+.pii-type{font-size:12.5px;font-weight:500;color:var(--text);flex:1;}
+.pii-count{font-family:'JetBrains Mono',monospace;font-size:12px;
+  font-variant-numeric:tabular-nums;font-weight:500;color:var(--risk);}
+.pii-dot{width:8px;height:8px;border-radius:2px;flex-shrink:0;}
+
+/* TABLE */
+.table-wrap{overflow-x:auto;}
+table{width:100%;border-collapse:collapse;font-size:13px;}
+th{text-align:left;padding:10px 14px;font-size:10.5px;font-weight:600;
+  letter-spacing:.07em;text-transform:uppercase;color:var(--text2);
+  background:var(--surface2);border-bottom:1px solid var(--border);white-space:nowrap;}
+td{padding:12px 14px;border-bottom:1px solid var(--border2);vertical-align:middle;}
+tr:last-child td{border-bottom:none;}
+tr:hover td{background:var(--surface2);}
+.machine-name{font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:500;color:var(--text);}
+.machine-user{font-size:11.5px;color:var(--text2);margin-top:2px;}
+.os-badge{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;
+  font-weight:500;padding:2px 8px;border-radius:4px;background:var(--surface2);
+  color:var(--text2);border:1px solid var(--border2);}
+.customer-badge{display:inline-block;padding:2px 8px;border-radius:4px;
+  font-size:11px;font-weight:600;}
+.num{font-family:'JetBrains Mono',monospace;font-size:12.5px;
+  font-variant-numeric:tabular-nums;color:var(--text);}
+.risk-chip{display:inline-block;padding:2px 9px;border-radius:3px;
+  font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;}
+.risk-high{background:var(--risk-bg);color:var(--risk);}
+.risk-medium{background:var(--warn-bg);color:var(--warn);}
+.risk-low{background:var(--ok-bg);color:var(--ok);}
+.risk-none{background:var(--surface2);color:var(--text3);}
+.btn-sm{padding:5px 10px;font-size:12px;border-radius:4px;border:1px solid var(--border);
+  background:transparent;color:var(--text2);cursor:pointer;font-family:'DM Sans',sans-serif;
+  font-weight:500;transition:background .12s,color .12s;}
+.btn-sm:hover{background:var(--surface2);color:var(--text);}
+
+/* COMPLIANCE */
+.compliance-item{margin-bottom:16px;}
+.compliance-header{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:6px;}
+.compliance-label{font-size:13px;font-weight:600;color:var(--text);}
+.compliance-pct{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:500;color:var(--text2);}
+.progress-track{background:var(--surface2);height:8px;border-radius:0;
+  overflow:hidden;border:1px solid var(--border2);}
+.progress-fill{height:100%;transition:width .8s cubic-bezier(.4,0,.2,1);}
+
+/* DETAIL PANEL */
+.detail-panel{display:none;position:fixed;top:0;right:0;bottom:0;width:480px;
+  background:var(--surface);border-left:1px solid var(--border);
+  box-shadow:var(--shadow-lg);z-index:200;overflow-y:auto;flex-direction:column;}
+.detail-panel.open{display:flex;}
+.detail-header{padding:20px 24px 18px;border-bottom:1px solid var(--border2);
+  display:flex;align-items:flex-start;gap:12px;}
+.detail-close{margin-left:auto;background:none;border:none;font-size:20px;
+  color:var(--text2);cursor:pointer;padding:0 4px;line-height:1;flex-shrink:0;}
+.detail-close:hover{color:var(--text);}
+.detail-body{padding:24px;flex:1;}
+.detail-hostname{font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:500;color:var(--text);}
+.detail-user{font-size:12.5px;color:var(--text2);margin-top:3px;}
+.loc-detail-item{padding:12px 14px;background:var(--surface2);border:1px solid var(--border2);margin-bottom:8px;}
+.loc-detail-name{font-size:13px;font-weight:600;color:var(--text);}
+.loc-detail-path{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--text3);
+  margin-top:2px;word-break:break-all;}
+.loc-detail-stats{display:flex;gap:16px;margin-top:8px;}
+.loc-detail-stat{font-size:12px;color:var(--text2);}
+.loc-detail-stat strong{color:var(--text);}
+.pii-mini{font-size:11px;margin-top:8px;color:var(--risk);font-weight:500;}
+
+/* OVERLAY */
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:199;}
+.overlay.open{display:block;}
+
+/* FILTER BAR */
+.filter-bar{display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap;}
+.filter-chip{padding:5px 12px;border:1px solid var(--border);border-radius:20px;
+  font-size:12px;font-weight:500;cursor:pointer;color:var(--text2);
+  background:var(--surface);transition:all .15s;white-space:nowrap;}
+.filter-chip:hover{border-color:var(--accent-vivid);color:var(--text);}
+.filter-chip.active{background:var(--accent-vivid);border-color:var(--accent-vivid);
+  color:#fff;font-weight:600;}
+
+.last-scan{font-size:11px;color:var(--text3);font-family:'JetBrains Mono',monospace;}
+
+@media (prefers-reduced-motion: reduce){
+  .loc-bar,.progress-fill,.customer-risk-fill{transition:none;}
+  .status-dot{animation:none;}
+}
+
+/* ── LOGIN SCREEN ───────────────────────────────────────── */
+.login-screen{position:fixed;inset:0;background:#0D1E30;z-index:9000;
+  display:flex;align-items:center;justify-content:center;padding:20px;}
+.login-screen.hidden{display:none;}
+.login-card{background:#fff;border-radius:10px;width:100%;max-width:400px;
+  box-shadow:0 24px 64px rgba(0,0,0,.5);overflow:hidden;}
+.login-banner{background:#0D1E30;padding:28px 32px 22px;}
+.login-wordmark{font-family:'Syne',sans-serif;font-weight:800;font-size:22px;color:#fff;letter-spacing:-.3px;}
+.login-wordmark span{color:#00C49A;}
+.login-sub{font-size:11px;color:#648CA4;text-transform:uppercase;letter-spacing:.07em;margin-top:3px;}
+.login-body{padding:28px 32px;}
+.login-body h2{font-family:'Syne',sans-serif;font-weight:700;font-size:18px;color:#0A1B2A;margin-bottom:4px;}
+.login-body p{font-size:13px;color:#4A6A82;margin-bottom:20px;}
+.login-label{font-size:11.5px;font-weight:600;color:#0A1B2A;text-transform:uppercase;
+  letter-spacing:.05em;display:block;margin-bottom:5px;}
+.login-input{width:100%;padding:10px 12px;border:1px solid #C8D8E8;border-radius:5px;
+  font-family:'DM Sans',sans-serif;font-size:13.5px;color:#0A1B2A;background:#EEF3F8;
+  outline:none;transition:border .15s,box-shadow .15s;margin-bottom:14px;}
+.login-input:focus{border-color:#00C49A;box-shadow:0 0 0 3px rgba(0,196,154,.15);}
+.login-input.url-input{font-family:'JetBrains Mono',monospace;font-size:12px;}
+.login-btn{width:100%;padding:11px;background:#00C49A;color:#0D1E30;border:none;
+  border-radius:5px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;
+  cursor:pointer;transition:background .15s;margin-top:4px;}
+.login-btn:hover{background:#00A87E;}
+.login-btn:disabled{background:#C8D8E8;color:#8AAABB;cursor:not-allowed;}
+.login-err{font-size:12px;color:#C0392B;text-align:center;min-height:18px;margin-top:8px;}
+.login-demo{text-align:center;margin-top:14px;}
+.login-demo a{font-size:12px;color:#4A6A82;cursor:pointer;text-decoration:underline;}
+.login-footer{font-size:11px;color:#8AAABB;text-align:center;padding:12px;border-top:1px solid #EEF3F8;}
+
+/* ── USER BADGE (topbar) ─────────────────────────────────── */
+.user-badge{display:flex;align-items:center;gap:8px;}
+.user-avatar{width:28px;height:28px;border-radius:6px;background:#00C49A;
+  display:flex;align-items:center;justify-content:center;
+  font-family:'Syne',sans-serif;font-weight:800;font-size:11px;color:#0D1E30;}
+.user-name{font-size:12.5px;font-weight:500;color:var(--text2);}
+.btn-logout{padding:5px 10px;font-size:12px;border-radius:4px;border:1px solid var(--border);
+  background:transparent;color:var(--text3);cursor:pointer;font-family:'DM Sans',sans-serif;}
+.btn-logout:hover{border-color:var(--risk);color:var(--risk);}
+
+/* ── DOWNLOAD AGENT CARD ─────────────────────────────────── */
+.download-card{background:linear-gradient(135deg,#0D1E30 0%,#112438 100%);
+  border-radius:8px;padding:18px 20px;display:flex;align-items:center;gap:16px;margin-bottom:20px;}
+.download-icon{font-size:24px;flex-shrink:0;}
+.download-text{flex:1;}
+.download-title{font-size:13.5px;font-weight:600;color:#fff;margin-bottom:2px;}
+.download-desc{font-size:12px;color:#8AAABB;}
+.btn-download{padding:9px 18px;background:#00C49A;color:#0D1E30;border:none;
+  border-radius:5px;font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:700;
+  cursor:pointer;white-space:nowrap;transition:background .15s;}
+.btn-download:hover{background:#00A87E;}
+</style>
+
+<!-- LOGIN SCREEN -->
+<div class="login-screen" id="login-screen">
+  <div class="login-card">
+    <div class="login-banner">
+      <div class="login-wordmark">Data<span>Sentry</span></div>
+      <div class="login-sub">Data Discovery &amp; Compliance Platform</div>
+    </div>
+    <div class="login-body">
+      <h2>Sign in</h2>
+      <p>Enter your server address and login credentials.</p>
+      <label class="login-label">Server URL</label>
+      <input class="login-input url-input" id="ls-url" type="url"
+             placeholder="https://datasentry.up.railway.app">
+      <label class="login-label">Email</label>
+      <input class="login-input" id="ls-email" type="email"
+             placeholder="admin@datasentry.local" autocomplete="username">
+      <label class="login-label">Password</label>
+      <input class="login-input" id="ls-pass" type="password"
+             placeholder="••••••••••••" autocomplete="current-password">
+      <button class="login-btn" id="ls-btn" onclick="doLogin()">Sign in</button>
+      <div class="login-err" id="ls-err"></div>
+      <div class="login-demo"><a onclick="enterDemoMode()">Continue in demo mode (no server required)</a></div>
+    </div>
+    <div class="login-footer">DataSentry v2 · Data Discovery &amp; GDPR Compliance</div>
+  </div>
+</div>
+
+<!-- OVERLAY + DETAIL PANEL -->
+<div class="overlay" id="overlay" onclick="closeDetail()"></div>
+<div class="detail-panel" id="detail-panel">
+  <div class="detail-header">
+    <div>
+      <div class="detail-hostname" id="dp-hostname">—</div>
+      <div class="detail-user" id="dp-user">—</div>
+    </div>
+    <button class="detail-close" onclick="closeDetail()">✕</button>
+  </div>
+  <div class="detail-body" id="dp-body"></div>
+</div>
+
+<!-- SIDEBAR -->
+<aside class="sidebar">
+  <div class="sidebar-logo">
+    <div class="wordmark">Data<span>Sentry</span></div>
+    <div class="tagline">Data Discovery & Compliance</div>
+  </div>
+  <div class="nav-section">Overview</div>
+  <div class="nav-item active" onclick="showSection('overview',this)">
+    <span class="nav-icon">⬡</span> Dashboard
+  </div>
+  <div class="nav-section">Customers</div>
+  <div class="nav-item" onclick="showSection('customers',this)">
+    <span class="nav-icon">◈</span> All Customers
+  </div>
+  <div id="customer-nav-items"></div>
+  <div class="nav-section">Fleet</div>
+  <div class="nav-item" onclick="showSection('machines',this)">
+    <span class="nav-icon">▣</span> All Machines
+  </div>
+  <div class="nav-item" onclick="showSection('pii',this)">
+    <span class="nav-icon">⚠</span> PII Findings
+    <span class="nav-badge" id="pii-badge">—</span>
+  </div>
+  <div class="nav-item" onclick="showSection('locations',this)">
+    <span class="nav-icon">◎</span> Storage Map
+  </div>
+  <div class="nav-item" onclick="showSection('compliance',this)">
+    <span class="nav-icon">◉</span> Compliance
+  </div>
+  <div class="nav-section">Settings</div>
+  <div class="nav-item" onclick="showSection('api',this)">
+    <span class="nav-icon">⊡</span> API / Config
+  </div>
+  <div class="sidebar-footer">
+    <div><span class="status-dot"></span>Live — 4 customers</div>
+    <div style="margin-top:4px;font-family:'JetBrains Mono',monospace;font-size:10px;">Last updated 13:30 UTC</div>
+  </div>
+</aside>
+
+<!-- MAIN -->
+<div class="main">
+  <header class="topbar">
+    <div>
+      <span class="topbar-title" id="topbar-title">Dashboard</span>
+      <span class="topbar-sub" id="topbar-sub">— 4 customers, 12 machines</span>
+    </div>
+    <div class="topbar-right">
+      <div class="user-badge" id="user-badge" style="display:none;">
+        <div class="user-avatar" id="user-avatar">—</div>
+        <span class="user-name" id="user-name-lbl"></span>
+        <button class="btn-logout" onclick="doLogout()">Sign out</button>
+      </div>
+      <button class="btn btn-ghost btn-sm" id="cfg-api-btn" onclick="showSection('api',document.querySelector('.nav-item:last-of-type'))" style="display:none;">Configure API</button>
+    </div>
+  </header>
+
+  <div class="page-content">
+
+    <!-- OVERVIEW -->
+    <section class="section active" id="section-overview">
+      <div class="page-heading">Fleet Overview</div>
+      <div class="page-sub">All customers and machines. <span class="last-scan" id="last-scan-lbl"></span></div>
+      <div class="stat-grid" id="overview-stats"></div>
+      <div class="two-col">
+        <div class="card">
+          <div class="card-header"><span class="card-title">Storage by Location Type</span><span class="card-meta">All customers</span></div>
+          <div class="card-body" id="loc-bars"></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><span class="card-title">PII Types Detected</span><span class="card-meta">Across all files</span></div>
+          <div class="card-body"><div class="pii-grid" id="pii-overview"></div></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">Customers at a Glance</span></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Customer</th><th>Machines</th><th>Total Files</th><th>Size</th><th>PII Files</th><th>Risk</th><th>Last Scan</th><th></th></tr></thead>
+            <tbody id="overview-customer-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- CUSTOMERS -->
+    <section class="section" id="section-customers">
+      <div class="page-heading">Customers</div>
+      <div class="page-sub">Select a customer to drill into their machines and compliance posture.</div>
+      <div class="customer-grid" id="customer-cards"></div>
+    </section>
+
+    <!-- CUSTOMER DETAIL (dynamic) -->
+    <section class="section" id="section-customer-detail">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px;">
+        <button class="btn-sm" onclick="showSection('customers',document.querySelector('.nav-item[onclick*=customers]'))">← Customers</button>
+        <div class="page-heading" id="cust-detail-name" style="margin-bottom:0;">—</div>
+        <div id="cust-detail-chip" style="margin-left:4px;"></div>
+      </div>
+      <div class="page-sub" id="cust-detail-sub">—</div>
+      <div class="download-card" id="cust-download-card" style="display:none;">
+        <div class="download-icon">⬇</div>
+        <div class="download-text">
+          <div class="download-title">Download Pre-Configured Agent Installer</div>
+          <div class="download-desc">A ZIP containing a ready-to-run installer — no configuration needed on each machine. Deploy via Group Policy, Intune, or Jamf.</div>
+        </div>
+        <button class="btn-download" id="cust-download-btn" onclick="downloadAgent()">Download Agent</button>
+      </div>
+      <div class="stat-grid" id="cust-stats"></div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">Machines</span><span class="card-meta" id="cust-machine-count"></span></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Hostname</th><th>User</th><th>OS</th><th>Locations</th><th>Files</th><th>Size</th><th>PII Files</th><th>Risk</th><th>Last Scan</th><th></th></tr></thead>
+            <tbody id="cust-machine-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="two-col">
+        <div class="card">
+          <div class="card-header"><span class="card-title">Storage Breakdown</span></div>
+          <div class="card-body" id="cust-loc-bars"></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><span class="card-title">PII Exposure</span></div>
+          <div class="card-body" id="cust-pii-bars"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ALL MACHINES -->
+    <section class="section" id="section-machines">
+      <div class="page-heading">All Machines</div>
+      <div class="page-sub">Every device that has submitted a scan, across all customers.</div>
+      <div class="filter-bar" id="machine-filters"></div>
+      <div class="card">
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Hostname / User</th><th>Customer</th><th>OS</th><th>Locations</th><th>Files</th><th>Size</th><th>PII Files</th><th>Risk</th><th>Last Scan</th><th></th></tr></thead>
+            <tbody id="machines-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- PII FINDINGS -->
+    <section class="section" id="section-pii">
+      <div class="page-heading">PII Findings</div>
+      <div class="page-sub">Files containing personally identifiable information, ranked by exposure.</div>
+      <div class="stat-grid" id="pii-stats"></div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">PII Breakdown by Type</span></div>
+        <div class="card-body" id="pii-detail"></div>
+      </div>
+    </section>
+
+    <!-- STORAGE MAP -->
+    <section class="section" id="section-locations">
+      <div class="page-heading">Storage Map</div>
+      <div class="page-sub">Where data actually lives across your entire customer base.</div>
+      <div class="filter-bar" id="loc-filters"></div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">Location Types — Fleet Wide</span></div>
+        <div class="card-body" id="loc-detail-body"></div>
+      </div>
+    </section>
+
+    <!-- COMPLIANCE -->
+    <section class="section" id="section-compliance">
+      <div class="page-heading">Compliance Status</div>
+      <div class="page-sub">GDPR readiness and DLP coverage across all customers.</div>
+      <div class="two-col">
+        <div class="card">
+          <div class="card-header"><span class="card-title">GDPR Readiness</span></div>
+          <div class="card-body" id="gdpr-body"></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><span class="card-title">DLP Coverage</span></div>
+          <div class="card-body" id="dlp-body"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">Recommended Actions</span><span class="card-meta">Sorted by urgency</span></div>
+        <div class="card-body" id="actions-body"></div>
+      </div>
+    </section>
+
+    <!-- API CONFIG -->
+    <section class="section" id="section-api">
+      <div class="page-heading">API & Configuration</div>
+      <div class="page-sub">Connect to your live DataSentry backend, or manage API keys.</div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">Backend Connection</span></div>
+        <div class="card-body">
+          <div style="display:grid;gap:16px;max-width:560px;">
+            <div>
+              <label style="display:block;font-size:12px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Backend API URL</label>
+              <input id="cfg-url" type="url" placeholder="https://your-datasentry.fly.dev"
+                style="width:100%;padding:9px 12px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:13px;outline:none;border-radius:4px;">
+            </div>
+            <div>
+              <label style="display:block;font-size:12px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">API Key</label>
+              <input id="cfg-key" type="password" placeholder="dsk_…"
+                style="width:100%;padding:9px 12px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:13px;outline:none;border-radius:4px;">
+            </div>
+            <div>
+              <button class="btn btn-primary" onclick="connectApi()">Connect & Load Live Data</button>
+            </div>
+            <div id="cfg-status" style="font-size:12.5px;color:var(--text2);"></div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">Scanner Deployment Snippet</span></div>
+        <div class="card-body">
+          <p style="font-size:13.5px;color:var(--text2);margin-bottom:16px;">Pass these environment variables when deploying the scanner to a customer machine. Use <code style="font-family:'JetBrains Mono',monospace;font-size:12px;">--customer-id</code> and <code style="font-family:'JetBrains Mono',monospace;font-size:12px;">--customer-name</code> to group machines by customer in the dashboard.</p>
+          <div style="background:var(--sidebar-bg);color:#A8D4C0;font-family:'JetBrains Mono',monospace;font-size:12.5px;padding:18px 20px;border-radius:4px;line-height:1.9;">
+            <span style="color:#6A90AB;"># Windows — set these then run the .exe</span><br>
+            set DATASENTRY_API_URL=<span style="color:#00C49A;">https://your-api.example.com</span><br>
+            set DATASENTRY_API_KEY=<span style="color:#FBB040;">dsk_your_key_here</span><br>
+            set DATASENTRY_CUSTOMER_ID=<span style="color:#A78BFA;">acme-corp</span><br>
+            set DATASENTRY_CUSTOMER_NAME=<span style="color:#A78BFA;">Acme Corporation</span><br>
+            datasentry-scanner.exe<br><br>
+            <span style="color:#6A90AB;"># macOS / Linux</span><br>
+            DATASENTRY_API_URL=<span style="color:#00C49A;">https://your-api.example.com</span> \<br>
+            DATASENTRY_API_KEY=<span style="color:#FBB040;">dsk_your_key_here</span> \<br>
+            DATASENTRY_CUSTOMER_ID=<span style="color:#A78BFA;">acme-corp</span> \<br>
+            DATASENTRY_CUSTOMER_NAME=<span style="color:#A78BFA;">"Acme Corporation"</span> \<br>
+            ./datasentry-scanner --cli
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<script>
+// ── LIVE DATA (seeded from real backend) ────────────────
+const LIVE = {"machines":[{"machine_id":"eb226d4389ed3439","hostname":"MACBOOK-DESIGN","username":"creative","os":"macOS","customer_id":"umbrella-group","customer_name":"Umbrella Group","total_files":18454,"total_size_bytes":121258095493,"total_pii_files":0,"location_count":2,"scanned_at":"2026-08-24T05:25:48.272988Z","scan_count":1},{"machine_id":"d4d5a3235ab78100","hostname":"DESKTOP-PHIL01","username":"p.heworth","os":"Windows","customer_id":"umbrella-group","customer_name":"Umbrella Group","total_files":26173,"total_size_bytes":11714975636,"total_pii_files":932,"location_count":3,"scanned_at":"2026-08-23T09:01:30.337823Z","scan_count":1},{"machine_id":"d5fd2a09eb28e14c","hostname":"MACBOOK-DESIGN","username":"creative","os":"macOS","customer_id":"initech-uk","customer_name":"Initech UK","total_files":24393,"total_size_bytes":136042022006,"total_pii_files":0,"location_count":2,"scanned_at":"2026-08-22T17:10:05.726014Z","scan_count":1},{"machine_id":"07b1e2699c765248","hostname":"LAPTOP-SARAH","username":"s.jones","os":"Windows","customer_id":"initech-uk","customer_name":"Initech UK","total_files":21276,"total_size_bytes":9527891886,"total_pii_files":282,"location_count":2,"scanned_at":"2026-08-25T01:23:04.484696Z","scan_count":1},{"machine_id":"30fe7d8b47ad14d2","hostname":"LAPTOP-HR-01","username":"hr.admin","os":"Windows","customer_id":"globex-ltd","customer_name":"Globex Ltd","total_files":23502,"total_size_bytes":12083580396,"total_pii_files":1223,"location_count":3,"scanned_at":"2026-08-22T08:39:22.540396Z","scan_count":1},{"machine_id":"ac12f9fb5fa8fdc4","hostname":"LAPTOP-SARAH","username":"s.jones","os":"Windows","customer_id":"globex-ltd","customer_name":"Globex Ltd","total_files":20680,"total_size_bytes":7498571760,"total_pii_files":446,"location_count":2,"scanned_at":"2026-08-24T11:01:09.023553Z","scan_count":1},{"machine_id":"71fc2fe5fa2ce834","hostname":"SERVER-DEV01","username":"devuser","os":"Linux","customer_id":"globex-ltd","customer_name":"Globex Ltd","total_files":36399,"total_size_bytes":6779218453,"total_pii_files":2,"location_count":1,"scanned_at":"2026-08-25T05:05:13.764618Z","scan_count":1},{"machine_id":"8c95e5527e54c3e5","hostname":"LAPTOP-HR-01","username":"hr.admin","os":"Windows","customer_id":"acme-corp","customer_name":"Acme Corporation","total_files":28756,"total_size_bytes":11637126710,"total_pii_files":1716,"location_count":3,"scanned_at":"2026-08-24T07:35:06.030400Z","scan_count":1},{"machine_id":"adbcd8213c06dae7","hostname":"DESKTOP-ACCOUNTS","username":"accounts","os":"Windows","customer_id":"acme-corp","customer_name":"Acme Corporation","total_files":67813,"total_size_bytes":80088143476,"total_pii_files":4672,"location_count":3,"scanned_at":"2026-08-25T05:40:19.618437Z","scan_count":1},{"machine_id":"d534eefb3f5b5ff2","hostname":"MACBOOK-TOM","username":"t.price","os":"macOS","customer_id":"acme-corp","customer_name":"Acme Corporation","total_files":30424,"total_size_bytes":13049027882,"total_pii_files":239,"location_count":4,"scanned_at":"2026-08-22T13:53:40.617558Z","scan_count":1},{"machine_id":"82f00d8e59fb7553","hostname":"LAPTOP-SARAH","username":"s.jones","os":"Windows","customer_id":"acme-corp","customer_name":"Acme Corporation","total_files":22225,"total_size_bytes":8399011099,"total_pii_files":439,"location_count":2,"scanned_at":"2026-08-23T12:15:44.196003Z","scan_count":1},{"machine_id":"9b6cd6b4d6d7c2b4","hostname":"localhost","username":"root","os":"Linux","customer_id":"acme-corp","customer_name":"Acme Corporation","total_files":9,"total_size_bytes":32978,"total_pii_files":0,"location_count":1,"scanned_at":"2026-08-25T13:26:54.960895Z","scan_count":1}],"customers":[{"customer_id":"acme-corp","customer_name":"Acme Corporation","machine_count":5,"total_files":149227,"total_size_bytes":113173307145,"total_pii_files":7067,"last_scanned_at":"2026-08-25T05:40:19.618437Z"},{"customer_id":"globex-ltd","customer_name":"Globex Ltd","machine_count":3,"total_files":80581,"total_size_bytes":26361370609,"total_pii_files":1671,"last_scanned_at":"2026-08-25T05:05:13.764618Z"},{"customer_id":"initech-uk","customer_name":"Initech UK","machine_count":2,"total_files":45669,"total_size_bytes":145569913892,"total_pii_files":282,"last_scanned_at":"2026-08-25T01:23:04.484696Z"},{"customer_id":"umbrella-group","customer_name":"Umbrella Group","machine_count":2,"total_files":44627,"total_size_bytes":132973071129,"total_pii_files":932,"last_scanned_at":"2026-08-24T05:25:48.272988Z"}],"summary":{"totals":{"total_machines":12,"total_files":300735,"total_size_bytes":366181203946,"total_pii_files":9952},"location_types":[{"location_type":"local","machine_count":11,"total_files":105101,"total_size_bytes":163601801541,"pii_file_count":4792},{"location_type":"network_drive","machine_count":2,"total_files":62431,"total_size_bytes":44001127883,"pii_file_count":3370},{"location_type":"onedrive_business","machine_count":4,"total_files":58124,"total_size_bytes":32031046992,"pii_file_count":1126},{"location_type":"icloud","machine_count":3,"total_files":45948,"total_size_bytes":106979867765,"pii_file_count":66},{"location_type":"google_drive","machine_count":1,"total_files":12797,"total_size_bytes":10741188368,"pii_file_count":145},{"location_type":"onedrive","machine_count":2,"total_files":12470,"total_size_bytes":6441644779,"pii_file_count":119},{"location_type":"dropbox","machine_count":2,"total_files":3864,"total_size_bytes":2384526618,"pii_file_count":334}],"pii_totals":{"email":5910,"uk_phone":2876,"credit_card":439,"uk_nino":554,"date_of_birth":1768,"postcode":1531,"iban":217,"sort_code":846,"uk_bank_account":441}},"generated_at":"2026-08-25T13:30:00Z"};
+
+// ── CONSTANTS ───────────────────────────────────────────
+const LOC_COLORS={local:"#6B8EAE",onedrive:"#0078D4",onedrive_business:"#0062CC",
+  dropbox:"#0061FE",google_drive:"#34A853",icloud:"#6B7280",
+  network_drive:"#F59E0B",box:"#0061D5",cloud_sync:"#6B7280"};
+const LOC_NAMES={local:"Local (Documents / Desktop)",onedrive:"OneDrive Personal",
+  onedrive_business:"OneDrive for Business / SharePoint",dropbox:"Dropbox",
+  google_drive:"Google Drive",icloud:"iCloud Drive",
+  network_drive:"Network Drives (SMB/CIFS)",box:"Box Drive",cloud_sync:"Other Cloud Sync"};
+const PII_LABELS={email:"Email Addresses",uk_phone:"UK Phone Numbers",
+  us_phone:"US Phone Numbers",credit_card:"Credit Card Numbers",
+  uk_nino:"UK NI Numbers",uk_nhs:"NHS Numbers",passport:"Passport Numbers",
+  sort_code:"Sort Codes",uk_bank_account:"UK Bank Accounts",iban:"IBAN Numbers",
+  ip_address:"IP Addresses",date_of_birth:"Dates of Birth",postcode:"Postcodes"};
+const PII_COLORS=["#EF4444","#F59E0B","#8B5CF6","#EC4899","#06B6D4",
+  "#10B981","#F97316","#6366F1","#14B8A6","#84CC16","#A855F7","#F43F5E","#0EA5E9"];
+const CUST_COLORS={"acme-corp":"#0D6EFD","globex-ltd":"#198754",
+  "initech-uk":"#6F42C1","umbrella-group":"#DC3545"};
+
+// ── HELPERS ─────────────────────────────────────────────
+function fmtSize(b){if(!b)return"0 B";const u=["B","KB","MB","GB","TB"];
+  const i=Math.min(Math.floor(Math.log(b)/Math.log(1024)),4);
+  return(b/Math.pow(1024,i)).toFixed(1)+" "+u[i];}
+function fmtNum(n){return(n||0).toLocaleString();}
+function riskLevel(m){if(m.total_pii_files>1000)return"high";
+  if(m.total_pii_files>200)return"medium";
+  if(m.total_pii_files>0)return"low";return"none";}
+function riskChip(m){const l=riskLevel(m);
+  return`<span class="risk-chip risk-${l}">${{high:"High",medium:"Medium",low:"Low",none:"Clean"}[l]}</span>`;}
+function osIcon(os){return os==="Windows"?"⊞":os==="macOS"?"":"🐧";}
+function locIcon(t){return{local:"🗂",onedrive:"☁",onedrive_business:"☁",dropbox:"📦",
+  google_drive:"📁",icloud:"☁",network_drive:"🗄",box:"📦",cloud_sync:"☁"}[t]||"📁";}
+function custColor(id){return CUST_COLORS[id]||"#6B7280";}
+function custInitials(name){return name.split(" ").map(w=>w[0]).join("").slice(0,2);}
+
+// ── RENDER OVERVIEW ──────────────────────────────────────
+function renderOverview(){
+  const s=LIVE.summary.totals;
+  const piuTotal=Object.values(LIVE.summary.pii_totals).reduce((a,b)=>a+b,0);
+  document.getElementById("overview-stats").innerHTML=`
+    <div class="stat-card stat-accent">
+      <div class="stat-label">Customers</div>
+      <div class="stat-value">${LIVE.customers.length}</div>
+      <div class="stat-delta">${s.total_machines} machines total</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Total Files</div>
+      <div class="stat-value">${fmtNum(s.total_files)}</div>
+      <div class="stat-delta">${fmtSize(s.total_size_bytes)}</div>
+    </div>
+    <div class="stat-card stat-risk">
+      <div class="stat-label">PII Files</div>
+      <div class="stat-value">${fmtNum(s.total_pii_files)}</div>
+      <div class="stat-delta">${fmtNum(piuTotal)} individual instances</div>
+    </div>
+    <div class="stat-card stat-warn">
+      <div class="stat-label">Unprotected Locations</div>
+      <div class="stat-value">${LIVE.summary.location_types.filter(l=>l.location_type==="network_drive"||l.location_type==="local").reduce((s,l)=>s+l.machine_count,0)}</div>
+      <div class="stat-delta">local &amp; network drive sources</div>
+    </div>`;
+  document.getElementById("last-scan-lbl").textContent=`Last updated: ${LIVE.generated_at.replace("T"," ").replace("Z"," UTC")}`;
+  document.getElementById("pii-badge").textContent=fmtNum(s.total_pii_files);
+
+  // Location bars
+  const locs=LIVE.summary.location_types;
+  const maxF=Math.max(...locs.map(l=>l.total_files));
+  document.getElementById("loc-bars").innerHTML=locs.map(l=>`
+    <div class="loc-row">
+      <div class="loc-icon" style="background:${LOC_COLORS[l.location_type]}22;">${locIcon(l.location_type)}</div>
+      <div style="flex:1;min-width:0;">
+        <div class="loc-name">${LOC_NAMES[l.location_type]||l.location_type}</div>
+        <div class="loc-count">${l.machine_count} machine${l.machine_count!==1?"s":""} · ${fmtSize(l.total_size_bytes)}</div>
+      </div>
+      <div class="loc-bar-wrap"><div class="loc-bar" style="width:${Math.round(l.total_files/maxF*100)}%;background:${LOC_COLORS[l.location_type]};"></div></div>
+      <div class="loc-files">${fmtNum(l.total_files)}</div>
+    </div>`).join("");
+
+  // PII overview
+  const pii=Object.entries(LIVE.summary.pii_totals).sort((a,b)=>b[1]-a[1]);
+  document.getElementById("pii-overview").innerHTML=pii.map(([k,v],i)=>`
+    <div class="pii-item">
+      <div class="pii-dot" style="background:${PII_COLORS[i%PII_COLORS.length]};"></div>
+      <div class="pii-type">${PII_LABELS[k]||k}</div>
+      <div class="pii-count">${fmtNum(v)}</div>
+    </div>`).join("");
+
+  // Customer table in overview
+  document.getElementById("overview-customer-tbody").innerHTML=LIVE.customers.map(c=>`
+    <tr style="cursor:pointer;" onclick="openCustomerDetail('${c.customer_id}')">
+      <td><div style="display:flex;align-items:center;gap:10px;">
+        <div style="width:28px;height:28px;border-radius:6px;background:${custColor(c.customer_id)};
+          display:flex;align-items:center;justify-content:center;
+          font-family:'Syne',sans-serif;font-weight:800;font-size:11px;color:#fff;">
+          ${custInitials(c.customer_name)}</div>
+        <div>
+          <div style="font-weight:600;font-size:13px;">${c.customer_name}</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--text3);">${c.customer_id}</div>
+        </div>
+      </div></td>
+      <td class="num">${c.machine_count}</td>
+      <td class="num">${fmtNum(c.total_files)}</td>
+      <td class="num">${fmtSize(c.total_size_bytes)}</td>
+      <td class="num" style="color:${c.total_pii_files>0?"var(--risk)":"var(--ok)"};">${fmtNum(c.total_pii_files)}</td>
+      <td>${riskChip({total_pii_files:c.total_pii_files})}</td>
+      <td class="last-scan">${c.last_scanned_at.slice(0,10)}</td>
+      <td><button class="btn-sm" onclick="event.stopPropagation();openCustomerDetail('${c.customer_id}')">View ›</button></td>
+    </tr>`).join("");
+}
+
+// ── RENDER CUSTOMERS ─────────────────────────────────────
+function renderCustomers(){
+  // Sidebar nav items
+  document.getElementById("customer-nav-items").innerHTML=LIVE.customers.map(c=>`
+    <div class="nav-item" style="padding-left:24px;" onclick="openCustomerDetail('${c.customer_id}')">
+      <span style="width:8px;height:8px;border-radius:2px;background:${custColor(c.customer_id)};flex-shrink:0;display:inline-block;"></span>
+      <span style="font-size:12.5px;">${c.customer_name}</span>
+    </div>`).join("");
+
+  // Customer cards
+  document.getElementById("customer-cards").innerHTML=LIVE.customers.map(c=>{
+    const maxPii=Math.max(...LIVE.customers.map(x=>x.total_pii_files),1);
+    const pct=Math.round(c.total_pii_files/maxPii*100);
+    return`<div class="customer-card" onclick="openCustomerDetail('${c.customer_id}')">
+      <div class="customer-card-top">
+        <div class="customer-avatar" style="background:${custColor(c.customer_id)};">${custInitials(c.customer_name)}</div>
+        <div>
+          <div class="customer-name">${c.customer_name}</div>
+          <div class="customer-id">${c.customer_id}</div>
+        </div>
+        <div style="margin-left:auto;">${riskChip({total_pii_files:c.total_pii_files})}</div>
+      </div>
+      <div class="customer-risk-bar">
+        <div class="customer-risk-fill" style="width:${pct}%;background:${c.total_pii_files>1000?"var(--risk)":c.total_pii_files>200?"var(--warn)":"var(--ok)"};"></div>
+      </div>
+      <div class="customer-stats">
+        <div class="customer-stat">
+          <div class="customer-stat-val">${c.machine_count}</div>
+          <div class="customer-stat-lbl">Machines</div>
+        </div>
+        <div class="customer-stat">
+          <div class="customer-stat-val">${fmtNum(c.total_files)}</div>
+          <div class="customer-stat-lbl">Files</div>
+        </div>
+        <div class="customer-stat">
+          <div class="customer-stat-val" style="color:${c.total_pii_files>0?"var(--risk)":"var(--ok)"};">${fmtNum(c.total_pii_files)}</div>
+          <div class="customer-stat-lbl">PII Files</div>
+        </div>
+      </div>
+    </div>`;}).join("");
+}
+
+// ── CUSTOMER DETAIL ──────────────────────────────────────
+function openCustomerDetail(custId){
+  const c=LIVE.customers.find(x=>x.customer_id===custId);
+  if(!c)return;
+  const machines=LIVE.machines.filter(m=>m.customer_id===custId);
+
+  document.getElementById("cust-detail-name").textContent=c.customer_name;
+  document.getElementById("cust-detail-chip").innerHTML=
+    `<span class="customer-badge" style="background:${custColor(custId)}22;color:${custColor(custId)};font-size:11px;font-weight:600;padding:2px 8px;border-radius:4px;font-family:'JetBrains Mono',monospace;">${custId}</span>`;
+  document.getElementById("cust-detail-sub").innerHTML=
+    `${c.machine_count} machines · ${fmtNum(c.total_files)} files · ${fmtSize(c.total_size_bytes)} · last scanned ${c.last_scanned_at.slice(0,10)}`;
+
+  document.getElementById("cust-stats").innerHTML=`
+    <div class="stat-card stat-accent">
+      <div class="stat-label">Machines</div>
+      <div class="stat-value">${c.machine_count}</div>
+      <div class="stat-delta">${fmtSize(c.total_size_bytes)} total</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Total Files</div>
+      <div class="stat-value">${fmtNum(c.total_files)}</div>
+    </div>
+    <div class="stat-card stat-risk">
+      <div class="stat-label">PII Files</div>
+      <div class="stat-value">${fmtNum(c.total_pii_files)}</div>
+    </div>
+    <div class="stat-card" style="border-top:2px solid ${custColor(custId)};">
+      <div class="stat-label">Risk Level</div>
+      <div class="stat-value" style="font-size:18px;padding-top:4px;">${riskChip({total_pii_files:c.total_pii_files})}</div>
+    </div>`;
+
+  document.getElementById("cust-machine-count").textContent=`${machines.length} device${machines.length!==1?"s":""}`;
+  document.getElementById("cust-machine-tbody").innerHTML=machines.map(m=>`
+    <tr>
+      <td class="machine-name">${m.hostname}</td>
+      <td class="machine-user">${m.username}</td>
+      <td><span class="os-badge">${osIcon(m.os)} ${m.os}</span></td>
+      <td class="num">${m.location_count}</td>
+      <td class="num">${fmtNum(m.total_files)}</td>
+      <td class="num">${fmtSize(m.total_size_bytes)}</td>
+      <td class="num" style="color:${m.total_pii_files>0?"var(--risk)":"var(--ok)"};">${fmtNum(m.total_pii_files)}</td>
+      <td>${riskChip(m)}</td>
+      <td class="last-scan">${m.scanned_at.slice(0,10)}</td>
+      <td><button class="btn-sm" onclick="openDetail('${m.machine_id}')">Detail ›</button></td>
+    </tr>`).join("");
+
+  // Storage and PII bars for this customer (use fleet data as proxy)
+  const locs=LIVE.summary.location_types;
+  const custMachineIds=new Set(machines.map(m=>m.machine_id));
+  const maxF=Math.max(...locs.map(l=>l.total_files));
+  document.getElementById("cust-loc-bars").innerHTML=locs.map(l=>`
+    <div class="loc-row">
+      <div class="loc-icon" style="background:${LOC_COLORS[l.location_type]}22;">${locIcon(l.location_type)}</div>
+      <div style="flex:1;min-width:0;">
+        <div class="loc-name">${LOC_NAMES[l.location_type]||l.location_type}</div>
+      </div>
+      <div class="loc-bar-wrap"><div class="loc-bar" style="width:${Math.round(l.total_files/maxF*100)}%;background:${LOC_COLORS[l.location_type]};"></div></div>
+      <div class="loc-files">${fmtNum(l.total_files)}</div>
+    </div>`).join("");
+
+  const pii=Object.entries(LIVE.summary.pii_totals).sort((a,b)=>b[1]-a[1]);
+  const maxP=pii[0]?.[1]||1;
+  document.getElementById("cust-pii-bars").innerHTML=pii.map(([k,v],i)=>`
+    <div class="compliance-item">
+      <div class="compliance-header">
+        <span class="compliance-label">${PII_LABELS[k]||k}</span>
+        <span class="compliance-pct">${fmtNum(v)}</span>
+      </div>
+      <div class="progress-track"><div class="progress-fill" style="width:${Math.round(v/maxP*100)}%;background:${PII_COLORS[i%PII_COLORS.length]};"></div></div>
+    </div>`).join("");
+
+  showSection("customer-detail",null);
+}
+
+// ── RENDER MACHINES ──────────────────────────────────────
+let machineFilter="all";
+function renderMachines(){
+  // Filter chips
+  const chips=[{id:"all",label:"All Customers"},...LIVE.customers.map(c=>({id:c.customer_id,label:c.customer_name}))];
+  document.getElementById("machine-filters").innerHTML=chips.map(c=>`
+    <div class="filter-chip ${machineFilter===c.id?"active":""}"
+      onclick="machineFilter='${c.id}';renderMachines();">${c.label}</div>`).join("");
+
+  const ms=machineFilter==="all"?LIVE.machines:LIVE.machines.filter(m=>m.customer_id===machineFilter);
+  document.getElementById("machines-tbody").innerHTML=ms.map(m=>`
+    <tr>
+      <td><div class="machine-name">${m.hostname}</div><div class="machine-user">${m.username}</div></td>
+      <td>
+        <span class="customer-badge" style="background:${custColor(m.customer_id)}22;color:${custColor(m.customer_id)};font-size:11px;font-weight:600;padding:2px 8px;border-radius:4px;">
+          ${m.customer_name}</span>
+      </td>
+      <td><span class="os-badge">${osIcon(m.os)} ${m.os}</span></td>
+      <td class="num">${m.location_count}</td>
+      <td class="num">${fmtNum(m.total_files)}</td>
+      <td class="num">${fmtSize(m.total_size_bytes)}</td>
+      <td class="num" style="color:${m.total_pii_files>0?"var(--risk)":"var(--ok)"};">${fmtNum(m.total_pii_files)}</td>
+      <td>${riskChip(m)}</td>
+      <td class="last-scan">${m.scanned_at.slice(0,10)}</td>
+      <td><button class="btn-sm" onclick="openDetail('${m.machine_id}')">Detail ›</button></td>
+    </tr>`).join("");
+}
+
+// ── RENDER PII ───────────────────────────────────────────
+function renderPii(){
+  const s=LIVE.summary;
+  const piuTotal=Object.values(s.pii_totals).reduce((a,b)=>a+b,0);
+  const affectedMachines=LIVE.machines.filter(m=>m.total_pii_files>0).length;
+  const pii=Object.entries(s.pii_totals).sort((a,b)=>b[1]-a[1]);
+  document.getElementById("pii-stats").innerHTML=`
+    <div class="stat-card stat-risk"><div class="stat-label">PII Files</div>
+      <div class="stat-value">${fmtNum(s.totals.total_pii_files)}</div>
+      <div class="stat-delta">requiring review</div></div>
+    <div class="stat-card"><div class="stat-label">PII Instances</div>
+      <div class="stat-value">${fmtNum(piuTotal)}</div>
+      <div class="stat-delta">individual data points</div></div>
+    <div class="stat-card stat-warn"><div class="stat-label">Highest Risk Type</div>
+      <div class="stat-value" style="font-size:15px;">${PII_LABELS[pii[0]?.[0]]||"—"}</div></div>
+    <div class="stat-card"><div class="stat-label">Machines Affected</div>
+      <div class="stat-value">${affectedMachines}</div>
+      <div class="stat-delta">of ${LIVE.machines.length} scanned</div></div>`;
+  const maxP=pii[0]?.[1]||1;
+  document.getElementById("pii-detail").innerHTML=pii.map(([k,v],i)=>`
+    <div class="compliance-item">
+      <div class="compliance-header">
+        <span class="compliance-label">${PII_LABELS[k]||k}</span>
+        <span class="compliance-pct">${fmtNum(v)} instances</span>
+      </div>
+      <div class="progress-track"><div class="progress-fill" style="width:${Math.round(v/maxP*100)}%;background:${PII_COLORS[i%PII_COLORS.length]};"></div></div>
+    </div>`).join("");
+}
+
+// ── RENDER LOCATIONS ─────────────────────────────────────
+function renderLocations(){
+  const locs=LIVE.summary.location_types;
+  const maxF=Math.max(...locs.map(l=>l.total_files));
+  document.getElementById("loc-detail-body").innerHTML=locs.map(l=>`
+    <div class="compliance-item">
+      <div class="compliance-header">
+        <span class="compliance-label">${locIcon(l.location_type)} ${LOC_NAMES[l.location_type]||l.location_type}
+          <span style="color:var(--text3);font-weight:400;font-size:12px;">(${l.machine_count} machines)</span>
+        </span>
+        <span class="compliance-pct">${fmtNum(l.total_files)} files · ${fmtSize(l.total_size_bytes)} · <span style="color:var(--risk);">${fmtNum(l.pii_file_count)} PII</span></span>
+      </div>
+      <div class="progress-track"><div class="progress-fill" style="width:${Math.round(l.total_files/maxF*100)}%;background:${LOC_COLORS[l.location_type]};"></div></div>
+    </div>`).join("");
+}
+
+// ── RENDER COMPLIANCE ────────────────────────────────────
+function renderCompliance(){
+  const totalMachines=LIVE.machines.length;
+  const piiMachines=LIVE.machines.filter(m=>m.total_pii_files>0).length;
+  const hasNetwork=LIVE.summary.location_types.some(l=>l.location_type==="network_drive");
+  const gdpr=[
+    {label:"Data inventory complete",pct:100},
+    {label:"PII identified and catalogued",pct:100},
+    {label:"Data minimised — not in local drafts",pct:38},
+    {label:"Network drives encrypted at rest",pct:hasNetwork?0:100},
+    {label:"Cloud storage under DPA",pct:72},
+    {label:"Retention policies enforced",pct:25},
+  ];
+  const dlp=[
+    {label:"Credit card data scanned",pct:100},
+    {label:"NI numbers detected",pct:100},
+    {label:"Email addresses logged",pct:100},
+    {label:"High-risk files quarantined",pct:0},
+    {label:"DLP policies on SharePoint / OneDrive",pct:55},
+    {label:"Shadow IT (Dropbox, Google Drive) blocked",pct:15},
+  ];
+  const pctColor=p=>p>=80?"var(--ok)":p>=50?"var(--warn)":"var(--risk)";
+  const bar=checks=>checks.map(c=>`
+    <div class="compliance-item">
+      <div class="compliance-header">
+        <span class="compliance-label">${c.label}</span>
+        <span class="compliance-pct" style="color:${pctColor(c.pct)};">${c.pct}%</span>
+      </div>
+      <div class="progress-track"><div class="progress-fill" style="width:${c.pct}%;background:${pctColor(c.pct)};"></div></div>
+    </div>`).join("");
+  document.getElementById("gdpr-body").innerHTML=bar(gdpr);
+  document.getElementById("dlp-body").innerHTML=bar(dlp);
+
+  const actions=[
+    {u:"high", t:`DESKTOP-ACCOUNTS (Acme Corporation) has ${fmtNum(4672)} PII files — including credit card data and IBANs on a local network drive with no encryption at rest. Migrate or encrypt immediately.`},
+    {u:"high", t:`Network drives across ${LIVE.summary.location_types.find(l=>l.location_type==="network_drive")?.machine_count||0} machines hold ${fmtNum(LIVE.summary.location_types.find(l=>l.location_type==="network_drive")?.pii_file_count||0)} PII files. These are the highest-risk unprotected locations across all customers.`},
+    {u:"high", t:`LAPTOP-HR-01 (Acme Corporation) contains ${fmtNum(1716)} PII files including UK NI numbers in local Documents and Downloads. HR data should reside in a GDPR-compliant HR system only.`},
+    {u:"medium", t:`Multiple customers have data syncing to Dropbox and Google Drive personal accounts. These services may not satisfy your customers' DPA with processors. Review contracts or block via MDM.`},
+    {u:"medium", t:`Umbrella Group: DESKTOP-PHIL01 has ${fmtNum(932)} PII files spread across local storage and Dropbox. Consolidate to OneDrive for Business under a DLP policy.`},
+    {u:"low", t:`Globex Ltd: SERVER-DEV01 has ${fmtNum(2)} PII files — low risk, but confirm these are not test databases containing real personal data.`},
+  ];
+  const uc={high:"var(--risk)",medium:"var(--warn)",low:"var(--accent)"};
+  document.getElementById("actions-body").innerHTML=actions.map(a=>`
+    <div style="display:flex;gap:14px;padding:12px 0;border-bottom:1px solid var(--border2);">
+      <div style="width:3px;background:${uc[a.u]};flex-shrink:0;"></div>
+      <div>
+        <span class="risk-chip risk-${a.u}" style="margin-right:8px;">${a.u}</span>
+        <span style="font-size:13px;color:var(--text);line-height:1.5;">${a.t}</span>
+      </div>
+    </div>`).join("");
+}
+
+// ── MACHINE DETAIL PANEL ─────────────────────────────────
+function openDetail(machineId){
+  const m=LIVE.machines.find(x=>x.machine_id===machineId);
+  if(!m)return;
+  document.getElementById("dp-hostname").textContent=m.hostname;
+  document.getElementById("dp-user").textContent=
+    `${m.username} · ${m.customer_name} · ${m.os} · ${m.location_count} location${m.location_count!==1?"s":""}`;
+  document.getElementById("dp-body").innerHTML=`
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px;">
+      <div style="text-align:center;padding:12px;background:var(--surface2);border:1px solid var(--border2);">
+        <div style="font-size:20px;font-family:'Syne',sans-serif;font-weight:700;">${fmtNum(m.total_files)}</div>
+        <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-top:4px;">Files</div>
+      </div>
+      <div style="text-align:center;padding:12px;background:var(--surface2);border:1px solid var(--border2);">
+        <div style="font-size:20px;font-family:'Syne',sans-serif;font-weight:700;">${fmtSize(m.total_size_bytes)}</div>
+        <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-top:4px;">Size</div>
+      </div>
+      <div style="text-align:center;padding:12px;background:${m.total_pii_files>0?"var(--risk-bg)":"var(--ok-bg)"};border:1px solid var(--border2);">
+        <div style="font-size:20px;font-family:'Syne',sans-serif;font-weight:700;color:${m.total_pii_files>0?"var(--risk)":"var(--ok)"};">${fmtNum(m.total_pii_files)}</div>
+        <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-top:4px;">PII Files</div>
+      </div>
+    </div>
+    <div style="padding:10px 12px;background:${custColor(m.customer_id)}18;border:1px solid ${custColor(m.customer_id)}44;margin-bottom:16px;border-radius:4px;">
+      <span style="font-size:12px;font-weight:600;color:${custColor(m.customer_id)};">Customer: ${m.customer_name}</span>
+      <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--text3);margin-left:8px;">${m.customer_id}</span>
+    </div>
+    <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text2);margin-bottom:10px;">Storage Locations (${m.location_count})</div>
+    <div style="background:var(--surface2);padding:16px;border:1px solid var(--border2);text-align:center;color:var(--text2);font-size:13px;">
+      Location detail available when connected to live API.<br>
+      <span style="font-size:11.5px;color:var(--text3);">Machine ID: <code style="font-family:'JetBrains Mono',monospace;">${m.machine_id}</code></span>
+    </div>
+    <div style="margin-top:16px;font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--text3);">Last scanned: ${m.scanned_at.replace("T"," ").slice(0,19)} UTC</div>`;
+  document.getElementById("detail-panel").classList.add("open");
+  document.getElementById("overlay").classList.add("open");
+}
+function closeDetail(){
+  document.getElementById("detail-panel").classList.remove("open");
+  document.getElementById("overlay").classList.remove("open");
+}
+
+// ── NAV ─────────────────────────────────────────────────
+function showSection(name,el){
+  document.querySelectorAll(".section").forEach(s=>s.classList.remove("active"));
+  document.querySelectorAll(".nav-item").forEach(n=>n.classList.remove("active"));
+  const sec=document.getElementById("section-"+name);
+  if(sec)sec.classList.add("active");
+  if(el)el.classList.add("active");
+  const titles={overview:"Dashboard",customers:"Customers",
+    "customer-detail":"Customer Detail",machines:"All Machines",
+    pii:"PII Findings",locations:"Storage Map",compliance:"Compliance",api:"API & Config"};
+  const subs={overview:"— 4 customers, 12 machines",customers:"— select a customer",
+    "customer-detail":"",machines:"— complete fleet",
+    pii:"— data at risk",locations:"— where data lives",
+    compliance:"— GDPR & DLP status",api:"— backend settings"};
+  document.getElementById("topbar-title").textContent=titles[name]||name;
+  document.getElementById("topbar-sub").textContent=subs[name]||"";
+}
+
+// ── AUTH & LOGIN ──────────────────────────────────────────
+let DS_TOKEN  = null;  // JWT
+let DS_URL    = null;  // backend URL
+let DS_USER   = null;  // {email, name, customer_id, role}
+let DS_DEMO   = false; // using embedded LIVE data
+
+function api(path, opts={}){
+  if(!DS_URL) return Promise.reject("No API URL");
+  return fetch(DS_URL+path,{
+    ...opts,
+    headers:{...(opts.headers||{}),"Authorization":"Bearer "+DS_TOKEN,"Content-Type":"application/json"}
+  });
+}
+
+async function doLogin(){
+  const url  = document.getElementById("ls-url").value.trim().replace(/\/+$/,"");
+  const email= document.getElementById("ls-email").value.trim();
+  const pass = document.getElementById("ls-pass").value;
+  const btn  = document.getElementById("ls-btn");
+  const err  = document.getElementById("ls-err");
+  if(!url||!email||!pass){err.textContent="All fields are required.";return;}
+  btn.disabled=true;btn.textContent="Signing in…";err.textContent="";
+  try{
+    const r=await fetch(`${url}/auth/login`,{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({email,password:pass})
+    });
+    const data=await r.json();
+    if(!r.ok){err.textContent=data.detail||"Login failed.";btn.disabled=false;btn.textContent="Sign in";return;}
+    localStorage.setItem("ds_token",data.access_token);
+    localStorage.setItem("ds_url",url);
+    DS_TOKEN=data.access_token; DS_URL=url; DS_USER=data.user;
+    await loadLiveData();
+  }catch(e){
+    err.textContent="Cannot reach server — check the URL and try again.";
+    btn.disabled=false;btn.textContent="Sign in";
+  }
+}
+
+document.addEventListener("keydown",e=>{
+  if(e.key==="Enter"&&!document.getElementById("login-screen").classList.contains("hidden"))doLogin();
+});
+
+function doLogout(){
+  localStorage.removeItem("ds_token");localStorage.removeItem("ds_url");
+  DS_TOKEN=null;DS_URL=null;DS_USER=null;DS_DEMO=false;
+  document.getElementById("login-screen").classList.remove("hidden");
+  document.getElementById("user-badge").style.display="none";
+}
+
+function enterDemoMode(){
+  DS_DEMO=true;DS_TOKEN=null;DS_URL=null;DS_USER=null;
+  document.getElementById("login-screen").classList.add("hidden");
+  document.getElementById("cfg-api-btn").style.display="";
+  initDashboard();
+}
+
+function showUserBadge(){
+  if(!DS_USER)return;
+  const initials=(DS_USER.name||DS_USER.email||"?").split(" ").map(w=>w[0]).slice(0,2).join("").toUpperCase();
+  document.getElementById("user-avatar").textContent=initials;
+  document.getElementById("user-name-lbl").textContent=DS_USER.name||DS_USER.email;
+  document.getElementById("user-badge").style.display="flex";
+  document.getElementById("login-screen").classList.add("hidden");
+}
+
+async function loadLiveData(){
+  try{
+    const [custR,machR,sumR]=await Promise.all([
+      api("/api/customers"),api("/api/machines"),api("/api/summary")
+    ]);
+    if(!custR.ok||!machR.ok||!sumR.ok) throw new Error("API error");
+    const customers=await custR.json();
+    const machines =await machR.json();
+    const summary  =await sumR.json();
+    LIVE.customers=customers;
+    LIVE.machines=machines;
+    LIVE.summary={...summary.totals,...summary,location_types:summary.location_types||[],pii_totals:summary.pii_totals||{}};
+    LIVE.generated_at=new Date().toISOString();
+    showUserBadge();
+    // Show download card only for customer-scoped users (not global admin)
+    if(DS_USER&&DS_USER.customer_id){
+      document.getElementById("cust-download-card").style.display="flex";
+    }
+    initDashboard();
+  }catch(e){
+    console.error("loadLiveData failed",e);
+    document.getElementById("ls-err").textContent="Logged in but failed to load data. Check server.";
+  }
+}
+
+async function downloadAgent(){
+  const btn=document.getElementById("cust-download-btn");
+  btn.disabled=true;btn.textContent="Generating…";
+  try{
+    const r=await api("/api/download/installer");
+    const blob=await r.blob();
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(blob);
+    a.download=r.headers.get("content-disposition")?.match(/filename="(.+)"/)?.[1]||"datasentry-installer.zip";
+    a.click();
+  }catch(e){
+    alert("Download failed — check you are connected to the server.");
+  }
+  btn.disabled=false;btn.textContent="Download Agent";
+}
+
+async function connectApi(){
+  const url=document.getElementById("cfg-url")?.value?.trim();
+  const key=document.getElementById("cfg-key")?.value?.trim();
+  if(!url||!key){document.getElementById("cfg-status").textContent="Please enter both URL and API key.";return;}
+  document.getElementById("cfg-status").textContent="Connecting…";
+  try{
+    const r=await fetch(`${url}/health`);
+    if(r.ok)document.getElementById("cfg-status").innerHTML=`<span style="color:var(--ok);">✓ Connected — reload to fetch live data</span>`;
+    else document.getElementById("cfg-status").innerHTML=`<span style="color:var(--risk);">✗ Server returned ${r.status}</span>`;
+  }catch(e){
+    document.getElementById("cfg-status").innerHTML=`<span style="color:var(--risk);">✗ Cannot reach server</span>`;
+  }
+}
+
+// ── INIT ────────────────────────────────────────────────
+function initDashboard(){
+  renderOverview();renderCustomers();renderMachines();
+  renderPii();renderLocations();renderCompliance();
+}
+
+// Restore session from localStorage, or show login
+(async function boot(){
+  const tok=localStorage.getItem("ds_token");
+  const url=localStorage.getItem("ds_url");
+  if(tok&&url){
+    DS_TOKEN=tok;DS_URL=url;
+    try{
+      const r=await fetch(`${url}/auth/me`,{headers:{Authorization:"Bearer "+tok}});
+      if(r.ok){
+        DS_USER=await r.json();
+        await loadLiveData();
+        return;
+      }
+    }catch(_){}
+    // Token expired or server unreachable — clear and show login
+    localStorage.removeItem("ds_token");localStorage.removeItem("ds_url");
+  }
+  // Pre-fill URL from last session
+  const savedUrl=localStorage.getItem("ds_url");
+  if(savedUrl)document.getElementById("ls-url").value=savedUrl;
+  // Show login screen (already visible by default)
+})();
+</script>
