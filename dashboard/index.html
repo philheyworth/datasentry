@@ -626,7 +626,10 @@ tr:hover td{background:var(--surface2);}
                   <div style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--warn);word-break:break-all;background:var(--warn-bg);padding:8px 10px;border-radius:4px;" id="nc-res-key">—</div>
                   <div style="font-size:11px;color:var(--text3);margin-top:4px;">Copy this now — it cannot be shown again. The customer's installer ZIP uses it automatically.</div>
                 </div>
-                <button onclick="ncCopyResult()" style="padding:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:12.5px;border-radius:4px;cursor:pointer;">Copy all details to clipboard</button>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                  <button onclick="ncCopyResult()" style="padding:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:12.5px;border-radius:4px;cursor:pointer;">Copy all details</button>
+                  <button onclick="ncLoginAsCustomer()" style="padding:8px;background:var(--accent);border:none;color:#fff;font-size:12.5px;font-weight:600;border-radius:4px;cursor:pointer;">Log in as customer →</button>
+                </div>
               </div>
             </div>
           </div>
@@ -1313,6 +1316,26 @@ async function createCustomer(){
     btn.disabled=false;btn.textContent="Create Customer";
   }
 }
+async function ncLoginAsCustomer(){
+  // Switch this session to the newly created customer — lets admin test the download flow
+  const email=document.getElementById("nc-res-email").textContent;
+  const pass =document.getElementById("nc-res-pass").textContent;
+  if(!DS_URL){alert("Not connected to a live server — demo mode cannot impersonate customers.");return;}
+  if(!confirm(`Switch to customer view as ${email}?\n\nYou'll see their dashboard and can test the agent download. Sign out and back in as admin to return.`))return;
+  try{
+    const r=await fetch(`${DS_URL}/auth/login`,{method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({email,password:pass})});
+    const data=await r.json();
+    if(!r.ok){alert("Login failed: "+(data.detail||"unknown error"));return;}
+    localStorage.setItem("ds_token",data.access_token);
+    localStorage.setItem("ds_url",DS_URL);
+    DS_TOKEN=data.access_token;DS_USER=data.user;
+    await loadLiveData();
+    showSection("overview",document.querySelector(".nav-item"));
+  }catch(e){alert("Cannot reach server.");}
+}
+
 function ncCopyResult(){
   const url =document.getElementById("nc-res-url").textContent;
   const email=document.getElementById("nc-res-email").textContent;
