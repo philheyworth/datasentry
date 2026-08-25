@@ -377,6 +377,10 @@ tr:hover td{background:var(--surface2);}
   <div class="nav-item" onclick="showSection('compliance',this)">
     <span class="nav-icon">◉</span> Compliance
   </div>
+  <div class="nav-section" id="admin-nav-section" style="display:none;">Admin</div>
+  <div class="nav-item" id="nav-add-customer" style="display:none;" onclick="showSection('add-customer',this)">
+    <span class="nav-icon">＋</span> Add Customer
+  </div>
   <div class="nav-section">Settings</div>
   <div class="nav-item" onclick="showSection('api',this)">
     <span class="nav-icon">⊡</span> API / Config
@@ -531,6 +535,140 @@ tr:hover td{background:var(--surface2);}
       <div class="card">
         <div class="card-header"><span class="card-title">Recommended Actions</span><span class="card-meta">Sorted by urgency</span></div>
         <div class="card-body" id="actions-body"></div>
+      </div>
+    </section>
+
+    <!-- ADD CUSTOMER (admin only) -->
+    <section class="section" id="section-add-customer">
+      <div class="page-heading">Add Customer</div>
+      <div class="page-sub">Create a portal login and scanner API key for a new customer in one step.</div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;max-width:900px;">
+
+        <!-- FORM -->
+        <div class="card">
+          <div class="card-header"><span class="card-title">Customer Details</span></div>
+          <div class="card-body">
+            <div style="display:grid;gap:14px;">
+
+              <div>
+                <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--text2);margin-bottom:5px;">Company Name *</label>
+                <input id="nc-name" type="text" placeholder="Acme Corporation"
+                  oninput="ncAutoSlug()"
+                  style="width:100%;padding:9px 12px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:13.5px;border-radius:4px;outline:none;">
+              </div>
+
+              <div>
+                <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--text2);margin-bottom:5px;">Customer ID <span style="font-weight:400;text-transform:none;letter-spacing:0;">(auto-generated, editable)</span></label>
+                <input id="nc-id" type="text" placeholder="acme-corporation"
+                  style="width:100%;padding:9px 12px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12.5px;border-radius:4px;outline:none;">
+                <div style="font-size:11px;color:var(--text3);margin-top:4px;">Lowercase, hyphens only. Used to group machines in the dashboard.</div>
+              </div>
+
+              <div style="height:1px;background:var(--border2);margin:2px 0;"></div>
+              <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--text2);">Customer's Portal Login</div>
+
+              <div>
+                <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--text2);margin-bottom:5px;">Contact Name *</label>
+                <input id="nc-admin-name" type="text" placeholder="Alice Admin"
+                  style="width:100%;padding:9px 12px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:13.5px;border-radius:4px;outline:none;">
+              </div>
+
+              <div>
+                <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--text2);margin-bottom:5px;">Email Address *</label>
+                <input id="nc-email" type="email" placeholder="admin@acme.com"
+                  style="width:100%;padding:9px 12px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:13.5px;border-radius:4px;outline:none;">
+              </div>
+
+              <div>
+                <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--text2);margin-bottom:5px;">Temporary Password *</label>
+                <div style="display:flex;gap:8px;">
+                  <input id="nc-pass" type="text" placeholder="SecurePass123!"
+                    style="flex:1;padding:9px 12px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12.5px;border-radius:4px;outline:none;">
+                  <button onclick="ncGenPass()" style="padding:9px 12px;background:var(--surface2);border:1px solid var(--border);color:var(--text2);font-size:12px;border-radius:4px;cursor:pointer;white-space:nowrap;">Generate</button>
+                </div>
+                <div style="font-size:11px;color:var(--text3);margin-top:4px;">The customer logs in with this and can change it after first sign-in.</div>
+              </div>
+
+              <div id="nc-err" style="font-size:12.5px;color:var(--risk);display:none;padding:8px 12px;background:var(--risk-bg);border-radius:4px;"></div>
+
+              <button id="nc-btn" onclick="createCustomer()"
+                style="padding:10px 20px;background:var(--accent);color:#fff;border:none;font-size:13.5px;font-weight:600;border-radius:4px;cursor:pointer;font-family:'DM Sans',sans-serif;">
+                Create Customer
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- RESULT + HOW IT WORKS -->
+        <div style="display:flex;flex-direction:column;gap:16px;">
+
+          <!-- Result card (hidden until success) -->
+          <div class="card" id="nc-result" style="display:none;border:2px solid var(--accent);">
+            <div class="card-header"><span class="card-title" style="color:var(--accent);">✓ Customer Created</span></div>
+            <div class="card-body">
+              <div style="display:grid;gap:10px;">
+                <div>
+                  <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--text2);margin-bottom:4px;">Portal Login URL</div>
+                  <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text);word-break:break-all;" id="nc-res-url">—</div>
+                </div>
+                <div>
+                  <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--text2);margin-bottom:4px;">Email</div>
+                  <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text);" id="nc-res-email">—</div>
+                </div>
+                <div>
+                  <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--text2);margin-bottom:4px;">Temporary Password</div>
+                  <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text);" id="nc-res-pass">—</div>
+                </div>
+                <div style="height:1px;background:var(--border2);"></div>
+                <div>
+                  <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--warn);margin-bottom:4px;">⚠ Scanner API Key — shown once</div>
+                  <div style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--warn);word-break:break-all;background:var(--warn-bg);padding:8px 10px;border-radius:4px;" id="nc-res-key">—</div>
+                  <div style="font-size:11px;color:var(--text3);margin-top:4px;">Copy this now — it cannot be shown again. The customer's installer ZIP uses it automatically.</div>
+                </div>
+                <button onclick="ncCopyResult()" style="padding:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:12.5px;border-radius:4px;cursor:pointer;">Copy all details to clipboard</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- How it works -->
+          <div class="card">
+            <div class="card-header"><span class="card-title">How it works</span></div>
+            <div class="card-body">
+              <div style="display:grid;gap:12px;">
+                <div style="display:flex;gap:12px;align-items:flex-start;">
+                  <div style="width:24px;height:24px;background:var(--accent-bg);color:var(--accent);font-weight:700;font-size:12px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;">1</div>
+                  <div>
+                    <div style="font-size:13px;font-weight:600;color:var(--text);">Fill in the form and click Create</div>
+                    <div style="font-size:12px;color:var(--text2);margin-top:2px;">Creates a portal login and a scanner API key in one step.</div>
+                  </div>
+                </div>
+                <div style="display:flex;gap:12px;align-items:flex-start;">
+                  <div style="width:24px;height:24px;background:var(--accent-bg);color:var(--accent);font-weight:700;font-size:12px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;">2</div>
+                  <div>
+                    <div style="font-size:13px;font-weight:600;color:var(--text);">Send the customer their login details</div>
+                    <div style="font-size:12px;color:var(--text2);margin-top:2px;">They sign into this dashboard with their email and password.</div>
+                  </div>
+                </div>
+                <div style="display:flex;gap:12px;align-items:flex-start;">
+                  <div style="width:24px;height:24px;background:var(--accent-bg);color:var(--accent);font-weight:700;font-size:12px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;">3</div>
+                  <div>
+                    <div style="font-size:13px;font-weight:600;color:var(--text);">Customer clicks "Download Agent"</div>
+                    <div style="font-size:12px;color:var(--text2);margin-top:2px;">They get a pre-configured ZIP — already knows their API key, company name, and server. Just unzip and run on each machine.</div>
+                  </div>
+                </div>
+                <div style="display:flex;gap:12px;align-items:flex-start;">
+                  <div style="width:24px;height:24px;background:var(--accent-bg);color:var(--accent);font-weight:700;font-size:12px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;">4</div>
+                  <div>
+                    <div style="font-size:13px;font-weight:600;color:var(--text);">Data appears here automatically</div>
+                    <div style="font-size:12px;color:var(--text2);margin-top:2px;">Each machine scan is scoped to that customer. You see all customers; they only see their own data.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
       </div>
     </section>
 
@@ -986,11 +1124,14 @@ function showSection(name,el){
   if(el)el.classList.add("active");
   const titles={overview:"Dashboard",customers:"Customers",
     "customer-detail":"Customer Detail",machines:"All Machines",
-    pii:"PII Findings",locations:"Storage Map",compliance:"Compliance",api:"API & Config"};
+    pii:"PII Findings",locations:"Storage Map",compliance:"Compliance",
+    "add-customer":"Add Customer",api:"API & Config"};
   const subs={overview:"— 4 customers, 12 machines",customers:"— select a customer",
     "customer-detail":"",machines:"— complete fleet",
     pii:"— data at risk",locations:"— where data lives",
-    compliance:"— GDPR & DLP status",api:"— backend settings"};
+    compliance:"— GDPR & DLP status",
+    "add-customer":"— create a new customer portal login and scanner key",
+    api:"— backend settings"};
   document.getElementById("topbar-title").textContent=titles[name]||name;
   document.getElementById("topbar-sub").textContent=subs[name]||"";
 }
@@ -1059,6 +1200,12 @@ function showUserBadge(){
   document.getElementById("user-name-lbl").textContent=DS_USER.name||DS_USER.email;
   document.getElementById("user-badge").style.display="flex";
   document.getElementById("login-screen").classList.add("hidden");
+  // Show admin nav for global admins
+  const isGlobalAdmin = DS_USER.role==="admin" && !DS_USER.customer_id;
+  ["admin-nav-section","nav-add-customer"].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el)el.style.display=isGlobalAdmin?"":"none";
+  });
 }
 
 async function loadLiveData(){
@@ -1114,6 +1261,65 @@ async function connectApi(){
   }catch(e){
     document.getElementById("cfg-status").innerHTML=`<span style="color:var(--risk);">✗ Cannot reach server</span>`;
   }
+}
+
+// ── ADD CUSTOMER (admin) ─────────────────────────────────
+function ncAutoSlug(){
+  const name=document.getElementById("nc-name").value;
+  const slug=name.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"");
+  document.getElementById("nc-id").value=slug;
+}
+function ncGenPass(){
+  const chars="ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$";
+  let p="";for(let i=0;i<14;i++)p+=chars[Math.floor(Math.random()*chars.length)];
+  document.getElementById("nc-pass").value=p;
+}
+async function createCustomer(){
+  const name     =document.getElementById("nc-name").value.trim();
+  const cid      =document.getElementById("nc-id").value.trim();
+  const adminName=document.getElementById("nc-admin-name").value.trim();
+  const email    =document.getElementById("nc-email").value.trim();
+  const pass     =document.getElementById("nc-pass").value.trim();
+  const errEl    =document.getElementById("nc-err");
+  errEl.style.display="none";
+  if(!name||!cid||!adminName||!email||!pass){
+    errEl.textContent="All fields are required.";errEl.style.display="block";return;
+  }
+  if(!/^[a-z0-9-]+$/.test(cid)){
+    errEl.textContent="Customer ID must be lowercase letters, numbers and hyphens only.";errEl.style.display="block";return;
+  }
+  const btn=document.getElementById("nc-btn");
+  btn.disabled=true;btn.textContent="Creating…";
+  try{
+    const r=await api("/api/customers/create",{
+      method:"POST",
+      body:JSON.stringify({customer_id:cid,customer_name:name,admin_name:adminName,admin_email:email,admin_password:pass})
+    });
+    const data=await r.json();
+    if(!r.ok){errEl.textContent=data.detail||"Failed to create customer.";errEl.style.display="block";btn.disabled=false;btn.textContent="Create Customer";return;}
+    // Show result
+    document.getElementById("nc-res-url").textContent=DS_URL||window.location.href;
+    document.getElementById("nc-res-email").textContent=email;
+    document.getElementById("nc-res-pass").textContent=pass;
+    document.getElementById("nc-res-key").textContent=data.scanner_api_key||"—";
+    document.getElementById("nc-result").style.display="";
+    btn.disabled=false;btn.textContent="Create Another Customer";
+    // Clear form
+    ["nc-name","nc-id","nc-admin-name","nc-email","nc-pass"].forEach(id=>document.getElementById(id).value="");
+    // Refresh customer list in background
+    if(!DS_DEMO) loadLiveData();
+  }catch(e){
+    errEl.textContent="Network error — check you are connected to the server.";errEl.style.display="block";
+    btn.disabled=false;btn.textContent="Create Customer";
+  }
+}
+function ncCopyResult(){
+  const url =document.getElementById("nc-res-url").textContent;
+  const email=document.getElementById("nc-res-email").textContent;
+  const pass =document.getElementById("nc-res-pass").textContent;
+  const key  =document.getElementById("nc-res-key").textContent;
+  const text =`DataSentry Portal Login\nURL: ${url}\nEmail: ${email}\nPassword: ${pass}\n\nScanner API Key (store securely): ${key}`;
+  navigator.clipboard.writeText(text).then(()=>alert("Copied to clipboard!")).catch(()=>alert(text));
 }
 
 // ── INIT ────────────────────────────────────────────────
