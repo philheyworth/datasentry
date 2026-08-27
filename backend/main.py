@@ -768,7 +768,7 @@ customer_id   = {cust_id}
 customer_name = {cust_name}
 """
 
-    exe_url   = f"{api_url}/static/DataSentry.exe"
+    exe_url   = "https://github.com/philheyworth/datasentry/releases/latest/download/DataSentry.exe"
     slug      = (cust_id or "datasentry").replace(" ", "-").lower()
 
     bat = f"""@echo off

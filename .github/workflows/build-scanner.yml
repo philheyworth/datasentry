@@ -1,0 +1,59 @@
+name: Build Scanner EXE
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scanner/**'
+      - '.github/workflows/build-scanner.yml'
+  workflow_dispatch:   # allow manual trigger from GitHub Actions tab
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller requests python-docx openpyxl pdfminer.six
+
+      - name: Build EXE with PyInstaller
+        working-directory: scanner
+        run: |
+          pyinstaller --onefile --windowed --name DataSentry --icon ../assets/icon.ico scanner.py
+        continue-on-error: true  # retry without icon if it fails
+
+      - name: Build EXE (no icon fallback)
+        working-directory: scanner
+        if: failure()
+        run: |
+          pyinstaller --onefile --windowed --name DataSentry scanner.py
+
+      - name: Upload EXE artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DataSentry-Windows
+          path: scanner/dist/DataSentry.exe
+          retention-days: 30
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: scanner-latest
+          name: DataSentry Scanner (latest)
+          body: |
+            Latest Windows scanner agent build.
+            Built automatically from the `scanner/scanner.py` source.
+          files: scanner/dist/DataSentry.exe
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
