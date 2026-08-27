@@ -28,6 +28,38 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+# ── Cloud-placeholder detection (Windows-only, graceful on other OSes) ────────
+if sys.platform == "win32":
+    try:
+        import ctypes
+        _kernel32 = ctypes.windll.kernel32
+        _FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS = 0x00400000  # OneDrive / cloud not-yet-downloaded
+        _FILE_ATTRIBUTE_RECALL_ON_OPEN        = 0x00040000  # will trigger cloud recall on open
+        _FILE_ATTRIBUTE_OFFLINE               = 0x00001000  # fully offline / archived
+        _INVALID_FILE_ATTRIBUTES              = 0xFFFFFFFF
+
+        def _is_cloud_placeholder(path_str: str) -> bool:
+            """Return True if the file is a cloud-only placeholder (not yet local)."""
+            try:
+                attrs = _kernel32.GetFileAttributesW(path_str)
+                if attrs == _INVALID_FILE_ATTRIBUTES:
+                    return False
+                return bool(attrs & (_FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS |
+                                     _FILE_ATTRIBUTE_RECALL_ON_OPEN |
+                                     _FILE_ATTRIBUTE_OFFLINE))
+            except Exception:
+                return False
+
+        _HAS_CLOUD_DETECTION = True
+    except Exception:
+        _HAS_CLOUD_DETECTION = False
+        def _is_cloud_placeholder(path_str: str) -> bool:
+            return False
+else:
+    _HAS_CLOUD_DETECTION = False
+    def _is_cloud_placeholder(path_str: str) -> bool:
+        return False
+
 # ── Optional dependencies (graceful fallback if not installed) ─────────────────
 try:
     import requests
@@ -389,50 +421,103 @@ def human_size(size_bytes: int) -> str:
     return f"{size_bytes / p:.1f} {units[i]}"
 
 
-def scan_location(location: dict, progress_cb=None) -> dict:
-    """Walk a directory and collect file metadata + PII findings."""
+def scan_location(location: dict, progress_cb=None,
+                  targeted_pii: bool = False) -> dict:
+    """
+    Walk a directory and collect file metadata + PII findings.
+
+    Two modes per file:
+      • Cloud-only placeholder  → catalog metadata only (no download triggered)
+      • Local file              → catalog metadata + full PII content scan
+
+    If targeted_pii=True (on-demand job), attempt PII scan even on cloud files
+    by downloading them one at a time. This is the user's explicit choice.
+
+    Returns the standard location result dict PLUS an 'inventory_records' list
+    for submission to /api/inventory.
+    """
     root = Path(location["path"])
+    loc_type  = location.get("type", "local")
+    loc_label = location.get("label", root.name)
+
     file_type_counts: dict[str, int] = {}
-    file_type_sizes: dict[str, int] = {}
-    total_files = 0
-    total_size = 0
+    file_type_sizes:  dict[str, int] = {}
+    total_files  = 0
+    total_size   = 0
     pii_findings: dict[str, int] = {}
-    pii_files: list[dict] = []
+    pii_files:    list[dict] = []
+    inventory_records: list[dict] = []
 
     for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
         # Prune ignored directories
-        dirnames[:] = [d for d in dirnames if d not in IGNORE_DIRS and not d.startswith(".")]
+        dirnames[:] = [d for d in dirnames
+                       if d not in IGNORE_DIRS and not d.startswith(".")]
 
         for fname in filenames:
             fp = Path(dirpath) / fname
             try:
-                stat = fp.stat()
-                size = stat.st_size
-                ext = fp.suffix.lower() or "(no ext)"
+                stat    = fp.stat()
+                size    = stat.st_size
+                ext     = fp.suffix.lower() or "(no ext)"
+                mtime   = datetime.utcfromtimestamp(stat.st_mtime).isoformat() + "Z"
+
+                # Detect cloud-only placeholder BEFORE doing anything else
+                is_cloud = _is_cloud_placeholder(str(fp))
+                is_local = not is_cloud
 
                 total_files += 1
-                total_size += size
+                total_size  += size
                 file_type_counts[ext] = file_type_counts.get(ext, 0) + 1
-                file_type_sizes[ext] = file_type_sizes.get(ext, 0) + size
+                file_type_sizes[ext]  = file_type_sizes.get(ext, 0) + size
 
                 if progress_cb:
-                    progress_cb(f"Scanning: {fp.name[:60]}")
+                    cloud_flag = " ☁" if is_cloud else ""
+                    progress_cb(f"{'Cataloging' if is_cloud else 'Scanning'}: "
+                                f"{fp.name[:55]}{cloud_flag}")
 
-                # Full content scan
-                if ext in SCAN_EXTENSIONS:
-                    text = extract_text(fp)
-                    if text:
-                        file_pii = scan_for_pii(text)
-                        if file_pii:
-                            # Accumulate totals
-                            for pii_type, count in file_pii.items():
-                                pii_findings[pii_type] = pii_findings.get(pii_type, 0) + count
-                            pii_files.append({
-                                "path": str(fp.relative_to(root)),
-                                "size_bytes": size,
-                                "pii_types": file_pii,
-                                "total_pii_count": sum(file_pii.values()),
-                            })
+                # ── PII scan logic ────────────────────────────────────────────
+                pii_status   = "pending"
+                file_pii: dict[str, int] = {}
+
+                if is_local or targeted_pii:
+                    # Local file or explicit user-triggered cloud scan
+                    if ext in SCAN_EXTENSIONS:
+                        text = extract_text(fp)
+                        if text:
+                            file_pii = scan_for_pii(text)
+                            pii_status = "findings" if file_pii else "clean"
+                            if file_pii:
+                                for pii_type, count in file_pii.items():
+                                    pii_findings[pii_type] = (
+                                        pii_findings.get(pii_type, 0) + count
+                                    )
+                                pii_files.append({
+                                    "path":            str(fp.relative_to(root)),
+                                    "size_bytes":      size,
+                                    "pii_types":       file_pii,
+                                    "total_pii_count": sum(file_pii.values()),
+                                })
+                        else:
+                            pii_status = "skipped"  # unreadable / binary
+                    else:
+                        pii_status = "skipped"  # extension not in scan set
+                # else: cloud file in normal mode — stays 'pending' for later
+
+                inventory_records.append({
+                    "file_path":      str(fp),
+                    "file_name":      fname,
+                    "file_ext":       ext,
+                    "file_size":      size,
+                    "file_modified":  mtime,
+                    "location_type":  loc_type,
+                    "location_label": loc_label,
+                    "is_local":       is_local,
+                    "pii_status":     pii_status,
+                    "pii_findings":   file_pii,
+                    "pii_count":      sum(file_pii.values()),
+                    "pii_scanned_at": datetime.utcnow().isoformat() + "Z"
+                                      if pii_status in ("clean", "findings") else None,
+                })
 
             except (PermissionError, OSError):
                 continue
@@ -444,22 +529,26 @@ def scan_location(location: dict, progress_cb=None) -> dict:
         key=lambda x: x["count"], reverse=True
     )[:25]
 
-    # Top PII files
-    top_pii_files = sorted(pii_files, key=lambda x: x["total_pii_count"], reverse=True)[:50]
+    # Top PII files by hit count
+    top_pii_files = sorted(
+        pii_files, key=lambda x: x["total_pii_count"], reverse=True
+    )[:50]
 
     return {
-        "label": location["label"],
-        "type": location["type"],
-        "path": location["path"],
-        "unc_path": location.get("unc_path"),
-        "total_files": total_files,
+        "label":            loc_label,
+        "type":             loc_type,
+        "path":             location["path"],
+        "unc_path":         location.get("unc_path"),
+        "total_files":      total_files,
         "total_size_bytes": total_size,
         "total_size_human": human_size(total_size),
-        "top_extensions": top_extensions,
-        "pii_summary": pii_findings,
-        "pii_file_count": len(pii_files),
-        "top_pii_files": top_pii_files,
-        "scanned_at": datetime.utcnow().isoformat() + "Z",
+        "top_extensions":   top_extensions,
+        "pii_summary":      pii_findings,
+        "pii_file_count":   len(pii_files),
+        "top_pii_files":    top_pii_files,
+        "scanned_at":       datetime.utcnow().isoformat() + "Z",
+        # ── Not sent to /api/scans — stripped before submission ────────────────
+        "inventory_records": inventory_records,
     }
 
 
@@ -515,6 +604,137 @@ def save_local_report(report: dict, output_path: str):
     print(f"Report saved to: {output_path}")
 
 
+def submit_inventory(records: list[dict], api_url: str, api_key: str,
+                     machine_id: str, hostname: str,
+                     progress_cb=None) -> bool:
+    """
+    POST file inventory records to /api/inventory in batches of 500.
+    Returns True if all batches succeeded.
+    """
+    if not HAS_REQUESTS or not records:
+        return False
+
+    BATCH_SIZE = 500
+    total = len(records)
+    success = True
+
+    for i in range(0, total, BATCH_SIZE):
+        batch = records[i : i + BATCH_SIZE]
+        if progress_cb:
+            progress_cb(f"Submitting inventory: {min(i + BATCH_SIZE, total)}/{total} files…")
+        try:
+            resp = requests.post(
+                f"{api_url.rstrip('/')}/api/inventory",
+                json={
+                    "machine_id": machine_id,
+                    "hostname":   hostname,
+                    "records":    batch,
+                },
+                headers={"X-API-Key": api_key, "Content-Type": "application/json"},
+                timeout=60,
+            )
+            resp.raise_for_status()
+        except Exception as e:
+            print(f"WARNING: Inventory batch {i//BATCH_SIZE + 1} failed: {e}")
+            success = False
+
+    return success
+
+
+def poll_and_run_jobs(api_url: str, api_key: str,
+                      machine_id: str, hostname: str,
+                      customer_id: str = "", customer_name: str = "",
+                      progress_cb=None) -> int:
+    """
+    Poll /api/scan-jobs/pending and execute any on-demand PII scan jobs.
+    These are triggered from the dashboard for cloud folders the user
+    explicitly chose to scan.
+    Returns the number of jobs processed.
+    """
+    if not HAS_REQUESTS:
+        return 0
+
+    try:
+        resp = requests.get(
+            f"{api_url.rstrip('/')}/api/scan-jobs/pending",
+            headers={"X-API-Key": api_key},
+            params={"machine_id": machine_id},
+            timeout=30,
+        )
+        resp.raise_for_status()
+        jobs = resp.json()
+    except Exception as e:
+        print(f"WARNING: Could not poll scan jobs: {e}")
+        return 0
+
+    if not jobs:
+        return 0
+
+    processed = 0
+    for job in jobs:
+        job_id      = job["id"]
+        target_path = job["target_path"]
+        loc_type    = job.get("location_type") or "local"
+        loc_label   = job.get("location_label") or target_path
+
+        if progress_cb:
+            progress_cb(f"[On-demand job #{job_id}] Scanning {loc_label}…")
+
+        # Mark as running
+        try:
+            requests.patch(
+                f"{api_url.rstrip('/')}/api/scan-jobs/{job_id}",
+                json={"status": "running"},
+                headers={"X-API-Key": api_key},
+                timeout=15,
+            )
+        except Exception:
+            pass  # Non-fatal — continue with the job
+
+        try:
+            target = Path(target_path)
+            if not target.exists():
+                raise FileNotFoundError(f"Path not found: {target_path}")
+
+            loc = {"label": loc_label, "path": target_path, "type": loc_type}
+            # targeted_pii=True: user explicitly requested this scan, so we
+            # download cloud files one at a time for full PII coverage.
+            result = scan_location(loc, progress_cb=progress_cb, targeted_pii=True)
+            inv_records = result.pop("inventory_records", [])
+
+            # Submit updated inventory (overwrites cloud-only records with PII results)
+            if inv_records:
+                submit_inventory(inv_records, api_url, api_key,
+                                 machine_id, hostname, progress_cb=progress_cb)
+
+            requests.patch(
+                f"{api_url.rstrip('/')}/api/scan-jobs/{job_id}",
+                json={
+                    "status":        "completed",
+                    "files_scanned": result.get("total_files", 0),
+                    "pii_found":     result.get("pii_file_count", 0),
+                },
+                headers={"X-API-Key": api_key},
+                timeout=15,
+            )
+            processed += 1
+
+        except Exception as e:
+            err_msg = str(e)[:500]
+            print(f"ERROR: Job #{job_id} failed: {err_msg}")
+            try:
+                requests.patch(
+                    f"{api_url.rstrip('/')}/api/scan-jobs/{job_id}",
+                    json={"status": "failed", "error": err_msg},
+                    headers={"X-API-Key": api_key},
+                    timeout=15,
+                )
+            except Exception:
+                pass
+
+    return processed
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # CLI ENTRY POINT
 # ─────────────────────────────────────────────────────────────────────────────
@@ -522,52 +742,106 @@ def save_local_report(report: dict, output_path: str):
 def run_scan(api_url: Optional[str] = None, api_key: Optional[str] = None,
              output: Optional[str] = None, progress_cb=None,
              customer_id: Optional[str] = None, customer_name: Optional[str] = None):
-    """Main scan routine. Returns the completed report dict."""
-    machine = get_machine_info()
-    locations = discover_storage_locations()
+    """
+    Main scan routine.
+
+    Phase 1 — Discovery & Catalog:
+      Walk every discovered storage location. For cloud-only placeholder files,
+      record metadata only (no download triggered). For local files, record
+      metadata AND run a full PII content scan.
+
+    Phase 2 — Inventory submission:
+      POST all file-level records to /api/inventory in batches.
+
+    Phase 3 — Scan report submission:
+      POST the location-summary report to /api/scans (backward-compatible).
+
+    Phase 4 — On-demand job poll:
+      Check /api/scan-jobs/pending for any jobs the dashboard queued (e.g.
+      "scan this OneDrive folder for PII"). Execute them with targeted_pii=True,
+      which allows cloud file downloads one-at-a-time under user control.
+
+    Returns the completed report dict.
+    """
+    machine       = get_machine_info()
+    machine_id    = machine["machine_id"]
+    hostname      = machine["hostname"]
+    locations     = discover_storage_locations()
+    cust_id       = customer_id   or os.environ.get("DATASENTRY_CUSTOMER_ID", "")
+    cust_name     = customer_name or os.environ.get("DATASENTRY_CUSTOMER_NAME", "")
 
     if progress_cb:
-        progress_cb(f"Found {len(locations)} storage location(s) to scan")
+        progress_cb(f"Found {len(locations)} storage location(s) — cataloging…")
+        if _HAS_CLOUD_DETECTION:
+            progress_cb("Cloud-placeholder detection active: cloud-only files "
+                        "will be cataloged without downloading.")
 
-    location_results = []
+    location_results   = []
+    all_inventory: list[dict] = []
+
+    # ── Phase 1: Catalog + local PII scan ─────────────────────────────────────
     for i, loc in enumerate(locations):
         if progress_cb:
-            progress_cb(f"[{i+1}/{len(locations)}] Scanning {loc['label']} ...")
-        result = scan_location(loc, progress_cb=progress_cb)
+            progress_cb(f"[{i+1}/{len(locations)}] {loc['label']}…")
+        result      = scan_location(loc, progress_cb=progress_cb, targeted_pii=False)
+        inv_records = result.pop("inventory_records", [])
+        all_inventory.extend(inv_records)
         location_results.append(result)
 
     report = {
         "machine": machine,
-        "customer": {
-            "id":   customer_id   or os.environ.get("DATASENTRY_CUSTOMER_ID", ""),
-            "name": customer_name or os.environ.get("DATASENTRY_CUSTOMER_NAME", ""),
-        },
+        "customer": {"id": cust_id, "name": cust_name},
         "scan_started_at": datetime.utcnow().isoformat() + "Z",
         "locations": location_results,
         "summary": {
-            "total_locations": len(location_results),
-            "total_files": sum(r["total_files"] for r in location_results),
+            "total_locations":  len(location_results),
+            "total_files":      sum(r["total_files"]      for r in location_results),
             "total_size_bytes": sum(r["total_size_bytes"] for r in location_results),
-            "total_pii_files": sum(r["pii_file_count"] for r in location_results),
+            "total_pii_files":  sum(r["pii_file_count"]  for r in location_results),
+            "cloud_files_cataloged": sum(
+                1 for rec in all_inventory if not rec["is_local"]
+            ),
             "capabilities": {
-                "docx": HAS_DOCX,
-                "xlsx": HAS_XLSX,
-                "pdf": HAS_PDF,
-            }
-        }
+                "docx":             HAS_DOCX,
+                "xlsx":             HAS_XLSX,
+                "pdf":              HAS_PDF,
+                "cloud_detection":  _HAS_CLOUD_DETECTION,
+            },
+        },
     }
 
-    # Submission
     if api_url and api_key:
+        # ── Phase 2: Submit file inventory ────────────────────────────────────
+        if all_inventory:
+            if progress_cb:
+                progress_cb(f"Submitting file inventory ({len(all_inventory):,} files)…")
+            submit_inventory(all_inventory, api_url, api_key,
+                             machine_id, hostname, progress_cb=progress_cb)
+
+        # ── Phase 3: Submit location-summary report ────────────────────────────
         if progress_cb:
-            progress_cb("Submitting report to DataSentry cloud...")
+            progress_cb("Submitting scan summary to DataSentry…")
         ok = submit_report(report, api_url, api_key)
         report["submitted"] = ok
+
+        # ── Phase 4: Process any pending on-demand jobs ────────────────────────
+        if progress_cb:
+            progress_cb("Checking for queued on-demand scan jobs…")
+        jobs_run = poll_and_run_jobs(
+            api_url, api_key, machine_id, hostname,
+            customer_id=cust_id, customer_name=cust_name,
+            progress_cb=progress_cb,
+        )
+        if jobs_run and progress_cb:
+            progress_cb(f"Completed {jobs_run} on-demand job(s).")
+
     elif output:
         save_local_report(report, output)
     else:
-        # Default: local file next to script
-        default_out = f"datasentry_report_{machine['hostname']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        default_out = (
+            f"datasentry_report_{hostname}_"
+            f"{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        )
         save_local_report(report, default_out)
 
     return report

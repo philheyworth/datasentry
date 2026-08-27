@@ -306,6 +306,61 @@ tr:hover td{background:var(--surface2);}
   border-radius:5px;font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:700;
   cursor:pointer;white-space:nowrap;transition:background .15s;}
 .btn-download:hover{background:#00A87E;}
+
+/* ── DATA MAP ──────────────────────────────────────────── */
+.dm-tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px;}
+@media(max-width:960px){.dm-tiles{grid-template-columns:repeat(2,1fr);}}
+.dm-tile{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:20px 22px;position:relative;overflow:hidden;}
+.dm-tile::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--dm-ac,var(--accent));}
+.dm-tile-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text2);margin-bottom:10px;}
+.dm-tile-value{font-size:28px;font-family:'Syne',sans-serif;font-weight:800;color:var(--text);line-height:1;}
+.dm-tile-sub{font-size:11.5px;color:var(--text3);margin-top:6px;}
+.dm-tile-cloud{--dm-ac:#3B82F6;}
+.dm-tile-local{--dm-ac:#10B981;}
+.dm-tile-pii{--dm-ac:var(--risk);}
+.dm-machine-list{display:flex;flex-direction:column;gap:10px;}
+.dm-machine{background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden;}
+.dm-machine-hdr{display:flex;align-items:center;gap:12px;padding:13px 18px;cursor:pointer;user-select:none;transition:background .12s;}
+.dm-machine-hdr:hover{background:var(--surface2);}
+.dm-chev{font-size:9px;color:var(--text3);transition:transform .2s;flex-shrink:0;}
+.dm-chev.open{transform:rotate(90deg);}
+.dm-machine-name{font-weight:700;font-size:13.5px;flex:1;color:var(--text);}
+.dm-machine-meta{font-size:11px;color:var(--text3);font-family:'JetBrains Mono',monospace;}
+.dm-machine-body{display:none;border-top:1px solid var(--border2);}
+.dm-machine-body.open{display:block;}
+.dm-loc-row{display:flex;align-items:center;gap:12px;padding:10px 18px;border-bottom:1px solid var(--border2);}
+.dm-loc-row:last-child{border-bottom:none;}
+.dm-loc-icon{width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;}
+.dm-loc-info{flex:1;min-width:0;}
+.dm-loc-name{font-size:12.5px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.dm-loc-stats{font-size:11px;color:var(--text3);margin-top:2px;}
+.dm-badge{display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:3px;font-size:10.5px;font-weight:700;letter-spacing:.02em;margin-right:4px;}
+.dm-badge-cloud{background:#DBEAFE;color:#1D4ED8;}
+.dm-badge-local{background:#D1FAE5;color:#065F46;}
+.dm-badge-pend{background:#FEF3C7;color:#92400E;}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]) .dm-badge-cloud{background:#1E3A5F;color:#93C5FD;}
+  :root:not([data-theme="light"]) .dm-badge-local{background:#052E16;color:#6EE7B7;}
+  :root:not([data-theme="light"]) .dm-badge-pend{background:#1C1408;color:#FCD34D;}}
+:root[data-theme="dark"] .dm-badge-cloud{background:#1E3A5F;color:#93C5FD;}
+:root[data-theme="dark"] .dm-badge-local{background:#052E16;color:#6EE7B7;}
+:root[data-theme="dark"] .dm-badge-pend{background:#1C1408;color:#FCD34D;}
+.btn-scan-pii{padding:5px 12px;font-size:11.5px;font-weight:700;background:var(--accent);color:#fff;border:none;border-radius:4px;cursor:pointer;white-space:nowrap;transition:background .15s,opacity .15s;font-family:'DM Sans',sans-serif;flex-shrink:0;}
+.btn-scan-pii:hover{opacity:.85;}
+.btn-scan-pii:disabled{opacity:.4;cursor:not-allowed;}
+.dm-jobs-table{width:100%;border-collapse:collapse;font-size:12.5px;}
+.dm-jobs-table th{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text2);padding:8px 14px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap;}
+.dm-jobs-table td{padding:10px 14px;border-bottom:1px solid var(--border2);vertical-align:middle;}
+.dm-jobs-table tr:last-child td{border-bottom:none;}
+.job-chip{display:inline-block;padding:2px 8px;border-radius:3px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;}
+.job-chip.pending{background:var(--warn-bg);color:var(--warn);}
+.job-chip.running{background:#DBEAFE;color:#1D4ED8;}
+.job-chip.completed{background:var(--ok-bg);color:var(--ok);}
+.job-chip.failed{background:var(--risk-bg);color:var(--risk);}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]) .job-chip.running{background:#1E3A5F;color:#93C5FD;}}
+:root[data-theme="dark"] .job-chip.running{background:#1E3A5F;color:#93C5FD;}
+.dm-refresh-row{display:flex;align-items:center;gap:10px;}
+.dm-spinner{width:12px;height:12px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
 </style>
 
 <!-- LOGIN SCREEN -->
@@ -374,6 +429,10 @@ tr:hover td{background:var(--surface2);}
   </div>
   <div class="nav-item" onclick="showSection('locations',this)">
     <span class="nav-icon">◎</span> Storage Map
+  </div>
+  <div class="nav-item" id="nav-datamap" onclick="showSection('datamap',this)">
+    <span class="nav-icon">⊞</span> Data Map
+    <span class="nav-badge" id="datamap-badge" style="display:none;background:rgba(59,130,246,.25);color:#60A5FA;"></span>
   </div>
   <div class="nav-item" onclick="showSection('compliance',this)">
     <span class="nav-icon">◉</span> Compliance
@@ -522,6 +581,63 @@ tr:hover td{background:var(--surface2);}
       <div class="card">
         <div class="card-header"><span class="card-title">Location Types — Fleet Wide</span></div>
         <div class="card-body" id="loc-detail-body"></div>
+      </div>
+    </section>
+
+    <!-- DATA MAP -->
+    <section class="section" id="section-datamap">
+      <div class="page-heading">Data Map</div>
+      <div class="page-sub">Full file inventory by machine and storage location — catalog everything, scan on demand.</div>
+
+      <!-- Summary tiles -->
+      <div class="dm-tiles" id="dm-tiles">
+        <div class="dm-tile dm-tile-total">
+          <div class="dm-tile-label">Total Cataloged</div>
+          <div class="dm-tile-value" id="dm-total">—</div>
+          <div class="dm-tile-sub" id="dm-total-sub">across all machines</div>
+        </div>
+        <div class="dm-tile dm-tile-local">
+          <div class="dm-tile-label">Local — PII Scanned</div>
+          <div class="dm-tile-value" id="dm-local">—</div>
+          <div class="dm-tile-sub" id="dm-local-sub">on-device files, fully checked</div>
+        </div>
+        <div class="dm-tile dm-tile-cloud">
+          <div class="dm-tile-label">Cloud — Cataloged Only</div>
+          <div class="dm-tile-value" id="dm-cloud">—</div>
+          <div class="dm-tile-sub" id="dm-cloud-sub">not downloaded · scan on demand</div>
+        </div>
+        <div class="dm-tile dm-tile-pii">
+          <div class="dm-tile-label">PII Findings</div>
+          <div class="dm-tile-value" id="dm-pii">—</div>
+          <div class="dm-tile-sub" id="dm-pii-sub">files with detected PII</div>
+        </div>
+      </div>
+
+      <!-- Machine accordion -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Files by Machine &amp; Location</span>
+          <div class="dm-refresh-row">
+            <div id="dm-spinner" class="dm-spinner" style="display:none;"></div>
+            <button class="btn btn-ghost btn-sm" onclick="loadDataMap()">↻ Refresh</button>
+          </div>
+        </div>
+        <div class="card-body" style="padding:0;">
+          <div class="dm-machine-list" id="dm-machine-list" style="padding:0;">
+            <div style="padding:40px;text-align:center;color:var(--text3);font-size:13px;">Loading inventory…</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Scan jobs log -->
+      <div class="card" style="margin-top:24px;">
+        <div class="card-header">
+          <span class="card-title">On-Demand Scan Jobs</span>
+          <span class="card-meta" id="dm-jobs-meta">—</span>
+        </div>
+        <div class="card-body" style="padding:0;">
+          <div id="dm-jobs-body" style="padding:40px;text-align:center;color:var(--text3);font-size:13px;">No scan jobs yet.</div>
+        </div>
       </div>
     </section>
 
@@ -1221,13 +1337,14 @@ function showSection(name,el){
   if(el)el.classList.add("active");
   const titles={overview:"Dashboard",customers:"Customers",
     "customer-detail":"Customer Detail",machines:"All Machines",
-    pii:"PII Findings",locations:"Storage Map",compliance:"Compliance",
+    pii:"PII Findings",locations:"Storage Map",datamap:"Data Map",compliance:"Compliance",
     "add-customer":"Add Customer",api:"API & Config",account:"Account","download-scanner":"Download Scanner"};
   const custCount=LIVE.customers.length, machCount=LIVE.machines.length;
   const subs={overview:custCount||machCount?`— ${custCount} customer${custCount!==1?"s":""}, ${machCount} machine${machCount!==1?"s":""}`:"",customers:"— select a customer",
     "customer-detail":"",machines:"— complete fleet",
     pii:"— data at risk",locations:"— where data lives",
     compliance:"— GDPR & DLP status",
+    datamap:"— full file inventory with cloud scan control",
     "add-customer":"— create a new customer portal login and scanner key",
     api:"— backend settings",account:"— password & users","download-scanner":"— get the agent installer"};
   document.getElementById("topbar-title").textContent=titles[name]||name;
@@ -1239,6 +1356,7 @@ function showSection(name,el){
     updateSnippet();
   }
   if(name==="account") loadUsers();
+  if(name==="datamap") loadDataMap();
 }
 
 function updateSnippet(){
@@ -1534,6 +1652,198 @@ function ncCopyResult(){
   const key  =document.getElementById("nc-res-key").textContent;
   const text =`DataSentry Portal Login\nURL: ${url}\nEmail: ${email}\nPassword: ${pass}\n\nScanner API Key (store securely): ${key}`;
   navigator.clipboard.writeText(text).then(()=>alert("Copied to clipboard!")).catch(()=>alert(text));
+}
+
+// ── DATA MAP ────────────────────────────────────────────
+let _dmJobPollTimer = null;
+
+async function loadDataMap(){
+  if(!DS_URL && !DS_DEMO) return;
+  const spinner = document.getElementById("dm-spinner");
+  if(spinner) spinner.style.display = "";
+  try {
+    const [invR, jobsR] = await Promise.all([
+      api("/api/inventory/summary"),
+      api("/api/scan-jobs")
+    ]);
+    if(!invR.ok || !jobsR.ok) throw new Error("API error");
+    const inv  = await invR.json();
+    const jobs = await jobsR.json();
+    _renderDmTiles(inv);
+    _renderDmMachines(inv);
+    _renderDmJobs(jobs);
+    // Auto-poll while any job is running or pending
+    const active = jobs.some(j => j.status === "running" || j.status === "pending");
+    if(active){
+      clearTimeout(_dmJobPollTimer);
+      _dmJobPollTimer = setTimeout(loadDataMap, 8000);
+      const badge = document.getElementById("datamap-badge");
+      if(badge){ badge.textContent = jobs.filter(j=>j.status==="running"||j.status==="pending").length; badge.style.display=""; }
+    } else {
+      const badge = document.getElementById("datamap-badge");
+      if(badge) badge.style.display = "none";
+    }
+  } catch(e){
+    console.error("loadDataMap", e);
+  } finally {
+    if(spinner) spinner.style.display = "none";
+  }
+}
+
+function _renderDmTiles(inv){
+  const machines = inv.machines || [];
+  const total    = machines.reduce((s,m) => s + (m.total_files||0), 0);
+  const local    = machines.reduce((s,m) => s + (m.local_files||0), 0);
+  const cloud    = machines.reduce((s,m) => s + (m.cloud_files||0), 0);
+  const pii      = machines.reduce((s,m) => s + (m.pii_files||0), 0);
+  const unscanned= machines.reduce((s,m) => s + (m.unscanned_files||0), 0);
+  document.getElementById("dm-total").textContent = fmtNum(total);
+  document.getElementById("dm-local").textContent = fmtNum(local);
+  document.getElementById("dm-cloud").textContent = fmtNum(cloud);
+  document.getElementById("dm-pii").textContent   = fmtNum(pii);
+  document.getElementById("dm-total-sub").textContent = `${machines.length} machine${machines.length!==1?"s":""}`;
+  document.getElementById("dm-local-sub").textContent = `fully PII-checked`;
+  document.getElementById("dm-cloud-sub").textContent = `${fmtNum(unscanned)} awaiting scan`;
+  document.getElementById("dm-pii-sub").textContent   = `${pii>0?"requires review":"all clean"}`;
+}
+
+function _renderDmMachines(inv){
+  const machines  = inv.machines || [];
+  const mlocs     = inv.machine_locations || [];
+  const container = document.getElementById("dm-machine-list");
+  if(!machines.length){
+    container.innerHTML = `<div style="padding:40px;text-align:center;color:var(--text3);font-size:13px;">No inventory yet — deploy the scanner agent to start cataloguing files.</div>`;
+    return;
+  }
+  container.innerHTML = machines.map(m => {
+    const locs = mlocs.filter(l => l.machine_id === m.machine_id);
+    const locRows = locs.map(l => {
+      const isCloud   = l.cloud_files > 0;
+      const isLocal   = l.local_files > 0;
+      const pendCloud = l.pending_cloud || 0;
+      const color     = LOC_COLORS[l.location_type] || "#6B7280";
+      const icon      = locIcon(l.location_type);
+      const label     = l.location_label || LOC_NAMES[l.location_type] || l.location_type;
+      const badges = [
+        isLocal  ? `<span class="dm-badge dm-badge-local">🗂 ${fmtNum(l.local_files)} local</span>` : "",
+        isCloud  ? `<span class="dm-badge dm-badge-cloud">☁ ${fmtNum(l.cloud_files)} cloud</span>` : "",
+        pendCloud? `<span class="dm-badge dm-badge-pend">⏳ ${fmtNum(pendCloud)} unscanned</span>` : "",
+        l.pii_files>0 ? `<span class="dm-badge" style="background:var(--risk-bg);color:var(--risk);">⚠ ${fmtNum(l.pii_files)} PII</span>` : "",
+      ].join("");
+      const scanBtn = (isCloud && pendCloud > 0)
+        ? `<button class="btn-scan-pii" onclick="event.stopPropagation();triggerPiiScan('${m.machine_id}','${(l.location_label||l.location_type).replace(/'/g,"\\'")}','${l.location_type}','${label.replace(/'/g,"\\'")}',this)">Scan for PII</button>`
+        : "";
+      return `<div class="dm-loc-row">
+        <div class="dm-loc-icon" style="background:${color}22;">${icon}</div>
+        <div class="dm-loc-info">
+          <div class="dm-loc-name">${label}</div>
+          <div class="dm-loc-stats">${fmtNum(l.total_files)} files · ${fmtSize(l.total_bytes||0)} · ${l.total_pii_hits>0?`<span style="color:var(--risk);">${fmtNum(l.total_pii_hits)} PII hits</span>`:"clean"}</div>
+          <div style="margin-top:5px;">${badges}</div>
+        </div>
+        ${scanBtn}
+      </div>`;
+    }).join("");
+
+    const cloudTotal  = m.cloud_files||0;
+    const localTotal  = m.local_files||0;
+    const piiTotal    = m.pii_files||0;
+    const summaryChips = [
+      localTotal ? `<span class="dm-badge dm-badge-local">${fmtNum(localTotal)} local</span>` : "",
+      cloudTotal ? `<span class="dm-badge dm-badge-cloud">${fmtNum(cloudTotal)} cloud</span>` : "",
+      piiTotal   ? `<span class="dm-badge" style="background:var(--risk-bg);color:var(--risk);">${fmtNum(piiTotal)} PII</span>` : "",
+    ].join("");
+
+    return `<div class="dm-machine" id="dm-m-${m.machine_id}">
+      <div class="dm-machine-hdr" onclick="_dmToggle('${m.machine_id}')">
+        <span class="dm-chev" id="dm-chev-${m.machine_id}">▶</span>
+        <div class="dm-machine-name">⊞ ${m.hostname||m.machine_id}</div>
+        <div style="display:flex;gap:6px;align-items:center;">${summaryChips}</div>
+        <div class="dm-machine-meta" style="margin-left:12px;">${fmtNum(m.total_files||0)} files · ${fmtSize(m.total_bytes||0)}</div>
+      </div>
+      <div class="dm-machine-body" id="dm-body-${m.machine_id}">
+        ${locRows || `<div style="padding:20px;color:var(--text3);font-size:12.5px;">No locations found for this machine.</div>`}
+      </div>
+    </div>`;
+  }).join("");
+}
+
+function _dmToggle(machineId){
+  const body = document.getElementById("dm-body-"+machineId);
+  const chev = document.getElementById("dm-chev-"+machineId);
+  if(!body) return;
+  const open = body.classList.toggle("open");
+  if(chev) { chev.classList.toggle("open", open); chev.textContent = open ? "▼" : "▶"; }
+}
+
+async function triggerPiiScan(machineId, targetPath, locType, label, btn){
+  if(btn){ btn.disabled = true; btn.textContent = "Queuing…"; }
+  try {
+    const r = await api("/api/scan-jobs", {
+      method: "POST",
+      body: JSON.stringify({ machine_id: machineId, target_path: targetPath,
+                             location_type: locType, location_label: label })
+    });
+    const data = await r.json();
+    if(!r.ok){
+      alert(data.detail || "Failed to create scan job.");
+      if(btn){ btn.disabled=false; btn.textContent="Scan for PII"; }
+      return;
+    }
+    if(btn){ btn.textContent="✓ Queued"; }
+    // Update badge and start polling
+    const badge = document.getElementById("datamap-badge");
+    if(badge){ badge.textContent="1"; badge.style.display=""; }
+    clearTimeout(_dmJobPollTimer);
+    _dmJobPollTimer = setTimeout(loadDataMap, 4000);
+  } catch(e){
+    alert("Network error — could not queue scan job.");
+    if(btn){ btn.disabled=false; btn.textContent="Scan for PII"; }
+  }
+}
+
+function _renderDmJobs(jobs){
+  const meta = document.getElementById("dm-jobs-meta");
+  const body = document.getElementById("dm-jobs-body");
+  if(!jobs || !jobs.length){
+    if(meta) meta.textContent = "no jobs";
+    if(body) body.innerHTML = `<div style="padding:32px;text-align:center;color:var(--text3);font-size:13px;">No scan jobs yet — click <strong>Scan for PII</strong> on a cloud folder above to queue one.</div>`;
+    return;
+  }
+  if(meta) meta.textContent = `${jobs.length} job${jobs.length!==1?"s":""}`;
+  const running = jobs.filter(j=>j.status==="running").length;
+  const pending = jobs.filter(j=>j.status==="pending").length;
+  if(running||pending){
+    const sp = document.getElementById("dm-spinner");
+    if(sp) sp.style.display = "";
+  }
+  const rows = jobs.map(j => {
+    const chip = `<span class="job-chip ${j.status}">${j.status}</span>`;
+    const path = j.location_label || j.target_path || "—";
+    const started = j.started_at ? j.started_at.replace("T"," ").slice(0,16) : "—";
+    const completed = j.completed_at ? j.completed_at.replace("T"," ").slice(0,16) : "—";
+    const scanned = j.files_scanned != null ? fmtNum(j.files_scanned) : "—";
+    const piiFound = j.pii_found != null ? `<span style="color:${j.pii_found>0?"var(--risk)":"var(--ok)"};">${fmtNum(j.pii_found)}</span>` : "—";
+    const errCell = j.error ? `<span style="color:var(--risk);font-size:11px;" title="${j.error}">✗ Error</span>` : "";
+    return `<tr>
+      <td>${chip}</td>
+      <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${path}">${path}</td>
+      <td style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text3);">${j.machine_id ? j.machine_id.slice(0,12)+"…" : "—"}</td>
+      <td>${scanned}</td>
+      <td>${piiFound}</td>
+      <td style="font-size:11px;color:var(--text3);">${started}</td>
+      <td style="font-size:11px;color:var(--text3);">${completed}</td>
+      <td>${errCell}</td>
+    </tr>`;
+  }).join("");
+  body.innerHTML = `<div style="overflow-x:auto;">
+    <table class="dm-jobs-table">
+      <thead><tr>
+        <th>Status</th><th>Target Path</th><th>Machine</th>
+        <th>Files Scanned</th><th>PII Found</th><th>Started</th><th>Completed</th><th></th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>`;
 }
 
 // ── INIT ────────────────────────────────────────────────

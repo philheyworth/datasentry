@@ -1,0 +1,8 @@
+# DataSentry Scanner — Python dependencies
+# Install with: pip install -r requirements.txt
+
+requests>=2.31.0          # HTTP client for reporting to backend
+python-docx>=1.1.0        # .docx file reading
+openpyxl>=3.1.2           # .xlsx file reading
+pdfminer.six>=20221105    # PDF text extraction
+pyinstaller>=6.5.0        # Packaging to .exe / .app (dev only)

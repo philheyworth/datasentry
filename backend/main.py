@@ -149,6 +149,54 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_scans_customer  ON scans(customer_id);
         CREATE INDEX IF NOT EXISTS idx_locs_scan       ON scan_locations(scan_id);
         CREATE INDEX IF NOT EXISTS idx_locs_machine    ON scan_locations(machine_id);
+
+        -- ── File inventory: one row per discovered file ─────────────────────────
+        CREATE TABLE IF NOT EXISTS file_inventory (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            customer_id    TEXT NOT NULL,
+            machine_id     TEXT NOT NULL,
+            hostname       TEXT,
+            file_path      TEXT NOT NULL,
+            file_name      TEXT NOT NULL,
+            file_ext       TEXT DEFAULT '',
+            file_size      INTEGER DEFAULT 0,
+            file_modified  TEXT,
+            location_type  TEXT NOT NULL DEFAULT 'local',
+            location_label TEXT,
+            is_local       INTEGER DEFAULT 1,
+            pii_status     TEXT DEFAULT 'pending',
+            pii_findings   TEXT DEFAULT '{}',
+            pii_count      INTEGER DEFAULT 0,
+            pii_scanned_at TEXT,
+            last_seen      TEXT DEFAULT (datetime('now')),
+            created_at     TEXT DEFAULT (datetime('now')),
+            UNIQUE(machine_id, file_path)
+        );
+
+        -- ── On-demand scan jobs: dashboard → scanner command channel ────────────
+        CREATE TABLE IF NOT EXISTS scan_jobs (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            customer_id    TEXT NOT NULL,
+            machine_id     TEXT NOT NULL,
+            target_path    TEXT NOT NULL,
+            location_type  TEXT,
+            location_label TEXT,
+            status         TEXT DEFAULT 'pending',
+            created_by     INTEGER REFERENCES users(id),
+            created_at     TEXT DEFAULT (datetime('now')),
+            started_at     TEXT,
+            completed_at   TEXT,
+            files_scanned  INTEGER DEFAULT 0,
+            pii_found      INTEGER DEFAULT 0,
+            error          TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_inv_customer  ON file_inventory(customer_id);
+        CREATE INDEX IF NOT EXISTS idx_inv_machine   ON file_inventory(machine_id);
+        CREATE INDEX IF NOT EXISTS idx_inv_loc_type  ON file_inventory(location_type, is_local);
+        CREATE INDEX IF NOT EXISTS idx_inv_pii       ON file_inventory(pii_status);
+        CREATE INDEX IF NOT EXISTS idx_jobs_pending  ON scan_jobs(machine_id, status);
+        CREATE INDEX IF NOT EXISTS idx_jobs_customer ON scan_jobs(customer_id);
     """)
     conn.commit()
 
@@ -919,6 +967,349 @@ def revoke_key(key_id: int, x_master_key: str = Header(...),
     db.execute("UPDATE api_keys SET active = 0 WHERE id = ?", (key_id,))
     db.commit()
     return {"revoked": key_id}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# FILE INVENTORY  (scanner submits; dashboard reads)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class InventoryRecord(BaseModel):
+    file_path:      str
+    file_name:      str
+    file_ext:       str = ""
+    file_size:      int = 0
+    file_modified:  Optional[str] = None
+    location_type:  str = "local"
+    location_label: Optional[str] = None
+    is_local:       bool = True
+    pii_status:     str = "pending"   # pending | clean | findings | skipped
+    pii_findings:   dict = {}
+    pii_count:      int = 0
+    pii_scanned_at: Optional[str] = None
+
+
+class InventoryBatch(BaseModel):
+    machine_id:   str
+    hostname:     Optional[str] = None
+    records:      list[InventoryRecord]
+
+
+@app.post("/api/inventory", status_code=200)
+async def receive_inventory(body: InventoryBatch,
+                            key_info: dict = Depends(require_api_key),
+                            db: sqlite3.Connection = Depends(get_db)):
+    """
+    Scanner posts a batch of file inventory records.
+    Uses INSERT OR REPLACE so re-scans update existing rows cleanly.
+    Accepts up to 2000 records per call; scanner should batch large directories.
+    """
+    if len(body.records) > 2000:
+        raise HTTPException(status_code=400, detail="Max 2000 records per batch")
+
+    customer_id = key_info.get("customer_id") or ""
+    now = datetime.utcnow().isoformat() + "Z"
+
+    rows = [
+        (
+            customer_id,
+            body.machine_id,
+            body.hostname,
+            r.file_path,
+            r.file_name,
+            r.file_ext,
+            r.file_size,
+            r.file_modified,
+            r.location_type,
+            r.location_label,
+            1 if r.is_local else 0,
+            r.pii_status,
+            json.dumps(r.pii_findings),
+            r.pii_count,
+            r.pii_scanned_at,
+            now,   # last_seen
+        )
+        for r in body.records
+    ]
+
+    db.executemany("""
+        INSERT INTO file_inventory
+            (customer_id, machine_id, hostname, file_path, file_name, file_ext,
+             file_size, file_modified, location_type, location_label, is_local,
+             pii_status, pii_findings, pii_count, pii_scanned_at, last_seen)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        ON CONFLICT(machine_id, file_path) DO UPDATE SET
+            file_size      = excluded.file_size,
+            file_modified  = excluded.file_modified,
+            location_type  = excluded.location_type,
+            location_label = excluded.location_label,
+            is_local       = excluded.is_local,
+            pii_status     = CASE WHEN excluded.pii_status != 'pending'
+                                  THEN excluded.pii_status
+                                  ELSE file_inventory.pii_status END,
+            pii_findings   = CASE WHEN excluded.pii_status != 'pending'
+                                  THEN excluded.pii_findings
+                                  ELSE file_inventory.pii_findings END,
+            pii_count      = CASE WHEN excluded.pii_status != 'pending'
+                                  THEN excluded.pii_count
+                                  ELSE file_inventory.pii_count END,
+            pii_scanned_at = CASE WHEN excluded.pii_scanned_at IS NOT NULL
+                                  THEN excluded.pii_scanned_at
+                                  ELSE file_inventory.pii_scanned_at END,
+            last_seen      = excluded.last_seen
+    """, rows)
+    db.commit()
+    return {"accepted": len(rows)}
+
+
+@app.get("/api/inventory/summary")
+def inventory_summary(payload: dict = Depends(require_user),
+                      db: sqlite3.Connection = Depends(get_db)):
+    """
+    Returns per-machine, per-location-type aggregates for the Data Map view.
+    """
+    cust_filter = _customer_filter(payload)
+    where  = "WHERE customer_id = ?" if cust_filter else ""
+    params = (cust_filter,) if cust_filter else ()
+
+    # Machine-level summary
+    machines = db.execute(f"""
+        SELECT machine_id, hostname,
+               COUNT(*)                                        AS total_files,
+               SUM(file_size)                                  AS total_bytes,
+               SUM(CASE WHEN is_local = 0 THEN 1 ELSE 0 END)  AS cloud_files,
+               SUM(CASE WHEN is_local = 1 THEN 1 ELSE 0 END)  AS local_files,
+               SUM(CASE WHEN pii_status = 'findings' THEN 1 ELSE 0 END) AS pii_files,
+               SUM(CASE WHEN pii_status = 'pending'  THEN 1 ELSE 0 END) AS unscanned_files,
+               MAX(last_seen)                                  AS last_seen
+        FROM file_inventory
+        {where}
+        GROUP BY machine_id, hostname
+        ORDER BY total_files DESC
+    """, params).fetchall()
+
+    # Location-type breakdown
+    loc_types = db.execute(f"""
+        SELECT location_type,
+               COUNT(*)                                        AS total_files,
+               SUM(file_size)                                  AS total_bytes,
+               SUM(CASE WHEN is_local = 0 THEN 1 ELSE 0 END)  AS cloud_files,
+               SUM(CASE WHEN pii_status = 'findings' THEN 1 ELSE 0 END) AS pii_files
+        FROM file_inventory
+        {where}
+        GROUP BY location_type
+        ORDER BY total_files DESC
+    """, params).fetchall()
+
+    # Per-machine per-location breakdown (for folder tree)
+    machine_locs = db.execute(f"""
+        SELECT machine_id, hostname, location_type, location_label,
+               COUNT(*)                                        AS total_files,
+               SUM(file_size)                                  AS total_bytes,
+               SUM(CASE WHEN is_local = 0 THEN 1 ELSE 0 END)  AS cloud_files,
+               SUM(CASE WHEN is_local = 1 THEN 1 ELSE 0 END)  AS local_files,
+               SUM(CASE WHEN pii_status = 'findings' THEN 1 ELSE 0 END) AS pii_files,
+               SUM(CASE WHEN pii_status = 'pending' AND is_local = 0
+                        THEN 1 ELSE 0 END)                     AS pending_cloud,
+               SUM(pii_count)                                  AS total_pii_hits,
+               MIN(last_seen)                                  AS last_seen
+        FROM file_inventory
+        {where}
+        GROUP BY machine_id, hostname, location_type, location_label
+        ORDER BY machine_id, total_files DESC
+    """, params).fetchall()
+
+    return {
+        "machines":      [dict(r) for r in machines],
+        "location_types": [dict(r) for r in loc_types],
+        "machine_locations": [dict(r) for r in machine_locs],
+    }
+
+
+@app.get("/api/inventory")
+def list_inventory(machine_id: Optional[str] = None,
+                   location_type: Optional[str] = None,
+                   pii_status: Optional[str] = None,
+                   is_local: Optional[int] = None,
+                   limit: int = 500,
+                   offset: int = 0,
+                   payload: dict = Depends(require_user),
+                   db: sqlite3.Connection = Depends(get_db)):
+    """Paginated file inventory with optional filters."""
+    cust_filter = _customer_filter(payload)
+    conditions = []
+    params: list = []
+    if cust_filter:
+        conditions.append("customer_id = ?"); params.append(cust_filter)
+    if machine_id:
+        conditions.append("machine_id = ?");   params.append(machine_id)
+    if location_type:
+        conditions.append("location_type = ?"); params.append(location_type)
+    if pii_status:
+        conditions.append("pii_status = ?");    params.append(pii_status)
+    if is_local is not None:
+        conditions.append("is_local = ?");      params.append(is_local)
+
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+    limit = min(limit, 1000)
+    params += [limit, offset]
+
+    rows = db.execute(f"""
+        SELECT id, machine_id, hostname, file_path, file_name, file_ext,
+               file_size, file_modified, location_type, location_label,
+               is_local, pii_status, pii_findings, pii_count,
+               pii_scanned_at, last_seen
+        FROM file_inventory {where}
+        ORDER BY pii_count DESC, file_size DESC
+        LIMIT ? OFFSET ?
+    """, params).fetchall()
+
+    total = db.execute(f"SELECT COUNT(*) FROM file_inventory {where}",
+                       params[:-2]).fetchone()[0]
+
+    return {
+        "total":  total,
+        "offset": offset,
+        "limit":  limit,
+        "items":  [dict(r) for r in rows],
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SCAN JOBS  (dashboard creates; scanner polls and executes)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class CreateScanJobRequest(BaseModel):
+    machine_id:     str
+    target_path:    str
+    location_type:  Optional[str] = None
+    location_label: Optional[str] = None
+
+
+class UpdateScanJobRequest(BaseModel):
+    status:        Optional[str] = None   # running | completed | failed
+    files_scanned: Optional[int] = None
+    pii_found:     Optional[int] = None
+    error:         Optional[str] = None
+
+
+@app.post("/api/scan-jobs", status_code=201)
+def create_scan_job(body: CreateScanJobRequest,
+                    payload: dict = Depends(require_user),
+                    db: sqlite3.Connection = Depends(get_db)):
+    """
+    Dashboard creates an on-demand PII scan job for a specific path on a machine.
+    The scanner picks this up on its next poll.
+    """
+    cust_filter = _customer_filter(payload)
+
+    # Validate machine belongs to this customer
+    owner = db.execute(
+        "SELECT customer_id FROM file_inventory WHERE machine_id = ? LIMIT 1",
+        (body.machine_id,)
+    ).fetchone()
+    if owner and cust_filter and owner["customer_id"] != cust_filter:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    # Prevent duplicate pending jobs for the same path
+    existing = db.execute("""
+        SELECT id FROM scan_jobs
+        WHERE machine_id = ? AND target_path = ? AND status = 'pending'
+    """, (body.machine_id, body.target_path)).fetchone()
+    if existing:
+        return {"job_id": existing["id"], "status": "pending", "note": "job already queued"}
+
+    customer_id = cust_filter or (owner["customer_id"] if owner else "")
+    cursor = db.execute("""
+        INSERT INTO scan_jobs
+            (customer_id, machine_id, target_path, location_type, location_label, created_by)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (customer_id, body.machine_id, body.target_path,
+          body.location_type, body.location_label, int(payload["sub"])))
+    db.commit()
+    return {"job_id": cursor.lastrowid, "status": "pending"}
+
+
+@app.get("/api/scan-jobs/pending")
+def get_pending_jobs(machine_id: str,
+                     key_info: dict = Depends(require_api_key),
+                     db: sqlite3.Connection = Depends(get_db)):
+    """
+    Scanner polls this endpoint after each scan to pick up on-demand jobs.
+    Returns pending jobs for this machine (scoped to API key's customer).
+    """
+    customer_id = key_info.get("customer_id") or ""
+    where_cust  = "AND customer_id = ?" if customer_id else ""
+    params      = [machine_id, machine_id] + ([customer_id] * 2 if customer_id else [])
+    # Use a subquery to mark as 'running' atomically isn't possible in SQLite
+    # without WAL; instead we return pending and let scanner PATCH immediately.
+    rows = db.execute(f"""
+        SELECT id, target_path, location_type, location_label, created_at
+        FROM scan_jobs
+        WHERE machine_id = ? AND status = 'pending' {where_cust}
+        ORDER BY created_at
+        LIMIT 5
+    """, [machine_id] + ([customer_id] if customer_id else [])).fetchall()
+    return [dict(r) for r in rows]
+
+
+@app.patch("/api/scan-jobs/{job_id}")
+def update_scan_job(job_id: int, body: UpdateScanJobRequest,
+                    key_info: dict = Depends(require_api_key),
+                    db: sqlite3.Connection = Depends(get_db)):
+    """Scanner updates a job's status and result counts."""
+    row = db.execute("SELECT id, status FROM scan_jobs WHERE id = ?", (job_id,)).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    updates: list[str] = []
+    params: list = []
+
+    if body.status:
+        updates.append("status = ?");       params.append(body.status)
+        if body.status == "running":
+            updates.append("started_at = ?");   params.append(datetime.utcnow().isoformat() + "Z")
+        elif body.status in ("completed", "failed"):
+            updates.append("completed_at = ?"); params.append(datetime.utcnow().isoformat() + "Z")
+    if body.files_scanned is not None:
+        updates.append("files_scanned = ?"); params.append(body.files_scanned)
+    if body.pii_found is not None:
+        updates.append("pii_found = ?");     params.append(body.pii_found)
+    if body.error is not None:
+        updates.append("error = ?");         params.append(body.error)
+
+    if updates:
+        params.append(job_id)
+        db.execute(f"UPDATE scan_jobs SET {', '.join(updates)} WHERE id = ?", params)
+        db.commit()
+
+    return {"job_id": job_id, "status": body.status or row["status"]}
+
+
+@app.get("/api/scan-jobs")
+def list_scan_jobs(machine_id: Optional[str] = None,
+                   status: Optional[str] = None,
+                   payload: dict = Depends(require_user),
+                   db: sqlite3.Connection = Depends(get_db)):
+    """Dashboard reads job history for a customer."""
+    cust_filter = _customer_filter(payload)
+    conditions = []
+    params: list = []
+    if cust_filter:
+        conditions.append("customer_id = ?"); params.append(cust_filter)
+    if machine_id:
+        conditions.append("machine_id = ?");  params.append(machine_id)
+    if status:
+        conditions.append("status = ?");      params.append(status)
+
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+    rows = db.execute(f"""
+        SELECT id, machine_id, target_path, location_type, location_label,
+               status, files_scanned, pii_found, error,
+               created_at, started_at, completed_at
+        FROM scan_jobs {where}
+        ORDER BY created_at DESC LIMIT 100
+    """, params).fetchall()
+    return [dict(r) for r in rows]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
