@@ -901,6 +901,9 @@ def health():
 
 
 if __name__ == "__main__":
-    import uvicorn
+    import uvicorn, sys
     port = int(os.environ.get("PORT", 8000))
+    print(f"[DataSentry] Starting on port {port}", flush=True)
+    print(f"[DataSentry] DB path: {DATABASE_PATH}", flush=True)
+    print(f"[DataSentry] Python: {sys.version}", flush=True)
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
