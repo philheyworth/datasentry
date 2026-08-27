@@ -29,13 +29,6 @@ jobs:
       - name: Build EXE with PyInstaller
         working-directory: scanner
         run: |
-          pyinstaller --onefile --windowed --name DataSentry --icon ../assets/icon.ico scanner.py
-        continue-on-error: true  # retry without icon if it fails
-
-      - name: Build EXE (no icon fallback)
-        working-directory: scanner
-        if: failure()
-        run: |
           pyinstaller --onefile --windowed --name DataSentry scanner.py
 
       - name: Upload EXE artifact
