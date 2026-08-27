@@ -387,8 +387,8 @@ tr:hover td{background:var(--surface2);}
     <span class="nav-icon">⊡</span> API / Config
   </div>
   <div class="sidebar-footer">
-    <div><span class="status-dot"></span>Live — 4 customers</div>
-    <div style="margin-top:4px;font-family:'JetBrains Mono',monospace;font-size:10px;">Last updated 13:30 UTC</div>
+    <div><span class="status-dot"></span><span id="sidebar-status">Connecting…</span></div>
+    <div id="sidebar-updated" style="margin-top:4px;font-family:'JetBrains Mono',monospace;font-size:10px;"></div>
   </div>
 </aside>
 
@@ -397,7 +397,7 @@ tr:hover td{background:var(--surface2);}
   <header class="topbar">
     <div>
       <span class="topbar-title" id="topbar-title">Dashboard</span>
-      <span class="topbar-sub" id="topbar-sub">— 4 customers, 12 machines</span>
+      <span class="topbar-sub" id="topbar-sub"></span>
     </div>
     <div class="topbar-right">
       <div class="user-badge" id="user-badge" style="display:none;">
@@ -729,8 +729,8 @@ tr:hover td{background:var(--surface2);}
 </div>
 
 <script>
-// ── LIVE DATA (seeded from real backend) ────────────────
-const LIVE = {"machines":[{"machine_id":"eb226d4389ed3439","hostname":"MACBOOK-DESIGN","username":"creative","os":"macOS","customer_id":"umbrella-group","customer_name":"Umbrella Group","total_files":18454,"total_size_bytes":121258095493,"total_pii_files":0,"location_count":2,"scanned_at":"2026-08-24T05:25:48.272988Z","scan_count":1},{"machine_id":"d4d5a3235ab78100","hostname":"DESKTOP-PHIL01","username":"p.heworth","os":"Windows","customer_id":"umbrella-group","customer_name":"Umbrella Group","total_files":26173,"total_size_bytes":11714975636,"total_pii_files":932,"location_count":3,"scanned_at":"2026-08-23T09:01:30.337823Z","scan_count":1},{"machine_id":"d5fd2a09eb28e14c","hostname":"MACBOOK-DESIGN","username":"creative","os":"macOS","customer_id":"initech-uk","customer_name":"Initech UK","total_files":24393,"total_size_bytes":136042022006,"total_pii_files":0,"location_count":2,"scanned_at":"2026-08-22T17:10:05.726014Z","scan_count":1},{"machine_id":"07b1e2699c765248","hostname":"LAPTOP-SARAH","username":"s.jones","os":"Windows","customer_id":"initech-uk","customer_name":"Initech UK","total_files":21276,"total_size_bytes":9527891886,"total_pii_files":282,"location_count":2,"scanned_at":"2026-08-25T01:23:04.484696Z","scan_count":1},{"machine_id":"30fe7d8b47ad14d2","hostname":"LAPTOP-HR-01","username":"hr.admin","os":"Windows","customer_id":"globex-ltd","customer_name":"Globex Ltd","total_files":23502,"total_size_bytes":12083580396,"total_pii_files":1223,"location_count":3,"scanned_at":"2026-08-22T08:39:22.540396Z","scan_count":1},{"machine_id":"ac12f9fb5fa8fdc4","hostname":"LAPTOP-SARAH","username":"s.jones","os":"Windows","customer_id":"globex-ltd","customer_name":"Globex Ltd","total_files":20680,"total_size_bytes":7498571760,"total_pii_files":446,"location_count":2,"scanned_at":"2026-08-24T11:01:09.023553Z","scan_count":1},{"machine_id":"71fc2fe5fa2ce834","hostname":"SERVER-DEV01","username":"devuser","os":"Linux","customer_id":"globex-ltd","customer_name":"Globex Ltd","total_files":36399,"total_size_bytes":6779218453,"total_pii_files":2,"location_count":1,"scanned_at":"2026-08-25T05:05:13.764618Z","scan_count":1},{"machine_id":"8c95e5527e54c3e5","hostname":"LAPTOP-HR-01","username":"hr.admin","os":"Windows","customer_id":"acme-corp","customer_name":"Acme Corporation","total_files":28756,"total_size_bytes":11637126710,"total_pii_files":1716,"location_count":3,"scanned_at":"2026-08-24T07:35:06.030400Z","scan_count":1},{"machine_id":"adbcd8213c06dae7","hostname":"DESKTOP-ACCOUNTS","username":"accounts","os":"Windows","customer_id":"acme-corp","customer_name":"Acme Corporation","total_files":67813,"total_size_bytes":80088143476,"total_pii_files":4672,"location_count":3,"scanned_at":"2026-08-25T05:40:19.618437Z","scan_count":1},{"machine_id":"d534eefb3f5b5ff2","hostname":"MACBOOK-TOM","username":"t.price","os":"macOS","customer_id":"acme-corp","customer_name":"Acme Corporation","total_files":30424,"total_size_bytes":13049027882,"total_pii_files":239,"location_count":4,"scanned_at":"2026-08-22T13:53:40.617558Z","scan_count":1},{"machine_id":"82f00d8e59fb7553","hostname":"LAPTOP-SARAH","username":"s.jones","os":"Windows","customer_id":"acme-corp","customer_name":"Acme Corporation","total_files":22225,"total_size_bytes":8399011099,"total_pii_files":439,"location_count":2,"scanned_at":"2026-08-23T12:15:44.196003Z","scan_count":1},{"machine_id":"9b6cd6b4d6d7c2b4","hostname":"localhost","username":"root","os":"Linux","customer_id":"acme-corp","customer_name":"Acme Corporation","total_files":9,"total_size_bytes":32978,"total_pii_files":0,"location_count":1,"scanned_at":"2026-08-25T13:26:54.960895Z","scan_count":1}],"customers":[{"customer_id":"acme-corp","customer_name":"Acme Corporation","machine_count":5,"total_files":149227,"total_size_bytes":113173307145,"total_pii_files":7067,"last_scanned_at":"2026-08-25T05:40:19.618437Z"},{"customer_id":"globex-ltd","customer_name":"Globex Ltd","machine_count":3,"total_files":80581,"total_size_bytes":26361370609,"total_pii_files":1671,"last_scanned_at":"2026-08-25T05:05:13.764618Z"},{"customer_id":"initech-uk","customer_name":"Initech UK","machine_count":2,"total_files":45669,"total_size_bytes":145569913892,"total_pii_files":282,"last_scanned_at":"2026-08-25T01:23:04.484696Z"},{"customer_id":"umbrella-group","customer_name":"Umbrella Group","machine_count":2,"total_files":44627,"total_size_bytes":132973071129,"total_pii_files":932,"last_scanned_at":"2026-08-24T05:25:48.272988Z"}],"summary":{"totals":{"total_machines":12,"total_files":300735,"total_size_bytes":366181203946,"total_pii_files":9952},"location_types":[{"location_type":"local","machine_count":11,"total_files":105101,"total_size_bytes":163601801541,"pii_file_count":4792},{"location_type":"network_drive","machine_count":2,"total_files":62431,"total_size_bytes":44001127883,"pii_file_count":3370},{"location_type":"onedrive_business","machine_count":4,"total_files":58124,"total_size_bytes":32031046992,"pii_file_count":1126},{"location_type":"icloud","machine_count":3,"total_files":45948,"total_size_bytes":106979867765,"pii_file_count":66},{"location_type":"google_drive","machine_count":1,"total_files":12797,"total_size_bytes":10741188368,"pii_file_count":145},{"location_type":"onedrive","machine_count":2,"total_files":12470,"total_size_bytes":6441644779,"pii_file_count":119},{"location_type":"dropbox","machine_count":2,"total_files":3864,"total_size_bytes":2384526618,"pii_file_count":334}],"pii_totals":{"email":5910,"uk_phone":2876,"credit_card":439,"uk_nino":554,"date_of_birth":1768,"postcode":1531,"iban":217,"sort_code":846,"uk_bank_account":441}},"generated_at":"2026-08-25T13:30:00Z"};
+// ── LIVE DATA (populated from real backend on login) ─────
+const LIVE = {machines:[],customers:[],summary:{totals:{total_machines:0,total_files:0,total_size_bytes:0,total_pii_files:0},location_types:[],pii_totals:{}},generated_at:new Date().toISOString()};
 
 // ── CONSTANTS ───────────────────────────────────────────
 const LOC_COLORS={local:"#6B8EAE",onedrive:"#0078D4",onedrive_business:"#0062CC",
@@ -1062,14 +1062,21 @@ function renderCompliance(){
   document.getElementById("gdpr-body").innerHTML=bar(gdpr);
   document.getElementById("dlp-body").innerHTML=bar(dlp);
 
-  const actions=[
-    {u:"high", t:`DESKTOP-ACCOUNTS (Acme Corporation) has ${fmtNum(4672)} PII files — including credit card data and IBANs on a local network drive with no encryption at rest. Migrate or encrypt immediately.`},
-    {u:"high", t:`Network drives across ${LIVE.summary.location_types.find(l=>l.location_type==="network_drive")?.machine_count||0} machines hold ${fmtNum(LIVE.summary.location_types.find(l=>l.location_type==="network_drive")?.pii_file_count||0)} PII files. These are the highest-risk unprotected locations across all customers.`},
-    {u:"high", t:`LAPTOP-HR-01 (Acme Corporation) contains ${fmtNum(1716)} PII files including UK NI numbers in local Documents and Downloads. HR data should reside in a GDPR-compliant HR system only.`},
-    {u:"medium", t:`Multiple customers have data syncing to Dropbox and Google Drive personal accounts. These services may not satisfy your customers' DPA with processors. Review contracts or block via MDM.`},
-    {u:"medium", t:`Umbrella Group: DESKTOP-PHIL01 has ${fmtNum(932)} PII files spread across local storage and Dropbox. Consolidate to OneDrive for Business under a DLP policy.`},
-    {u:"low", t:`Globex Ltd: SERVER-DEV01 has ${fmtNum(2)} PII files — low risk, but confirm these are not test databases containing real personal data.`},
-  ];
+  // Build actions dynamically from real data
+  const actions=[];
+  const netDrive=LIVE.summary.location_types.find(l=>l.location_type==="network_drive");
+  if(netDrive&&netDrive.pii_file_count>0)
+    actions.push({u:"high",t:`Network drives across ${netDrive.machine_count} machine${netDrive.machine_count!==1?"s":""} hold ${fmtNum(netDrive.pii_file_count)} PII files — highest-risk unprotected locations.`});
+  const topPiiMachines=[...LIVE.machines].sort((a,b)=>b.total_pii_files-a.total_pii_files).filter(m=>m.total_pii_files>0).slice(0,3);
+  topPiiMachines.forEach(m=>{
+    const sev=m.total_pii_files>1000?"high":m.total_pii_files>100?"medium":"low";
+    actions.push({u:sev,t:`${m.hostname} (${m.customer_name}) has ${fmtNum(m.total_pii_files)} PII files across ${m.location_count} storage location${m.location_count!==1?"s":""}.`});
+  });
+  const dropbox=LIVE.summary.location_types.find(l=>l.location_type==="dropbox");
+  if(dropbox&&dropbox.machine_count>0)
+    actions.push({u:"medium",t:`${dropbox.machine_count} machine${dropbox.machine_count!==1?"s":""} sync to Dropbox — confirm DPA compliance with processors.`});
+  if(!actions.length)
+    actions.push({u:"low",t:"No scanned machines yet. Deploy the scanner agent to customer machines to generate compliance recommendations."});
   const uc={high:"var(--risk)",medium:"var(--warn)",low:"var(--accent)"};
   document.getElementById("actions-body").innerHTML=actions.map(a=>`
     <div style="display:flex;gap:14px;padding:12px 0;border-bottom:1px solid var(--border2);">
@@ -1132,7 +1139,8 @@ function showSection(name,el){
     "customer-detail":"Customer Detail",machines:"All Machines",
     pii:"PII Findings",locations:"Storage Map",compliance:"Compliance",
     "add-customer":"Add Customer",api:"API & Config"};
-  const subs={overview:"— 4 customers, 12 machines",customers:"— select a customer",
+  const custCount=LIVE.customers.length, machCount=LIVE.machines.length;
+  const subs={overview:custCount||machCount?`— ${custCount} customer${custCount!==1?"s":""}, ${machCount} machine${machCount!==1?"s":""}`:"",customers:"— select a customer",
     "customer-detail":"",machines:"— complete fleet",
     pii:"— data at risk",locations:"— where data lives",
     compliance:"— GDPR & DLP status",
@@ -1363,6 +1371,19 @@ function ncCopyResult(){
 
 // ── INIT ────────────────────────────────────────────────
 function initDashboard(){
+  // Update sidebar footer with real counts
+  const custCount=LIVE.customers.length, machCount=LIVE.machines.length;
+  const statusEl=document.getElementById("sidebar-status");
+  const updatedEl=document.getElementById("sidebar-updated");
+  if(statusEl) statusEl.textContent=DS_DEMO?"Demo mode":`Live — ${custCount} customer${custCount!==1?"s":""}`;
+  if(updatedEl){
+    const t=LIVE.generated_at?new Date(LIVE.generated_at):null;
+    updatedEl.textContent=t?`Last updated ${t.toTimeString().slice(0,5)} UTC`:"";
+  }
+  // Update topbar subtitle for overview
+  const topSub=document.getElementById("topbar-sub");
+  if(topSub&&topSub.textContent===""||topSub?.textContent===""){
+    topSub.textContent=custCount||machCount?`— ${custCount} customer${custCount!==1?"s":""}, ${machCount} machine${machCount!==1?"s":""}`:"";}
   renderOverview();renderCustomers();renderMachines();
   renderPii();renderLocations();renderCompliance();
 }
