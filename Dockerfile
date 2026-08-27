@@ -7,8 +7,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY backend/ .
 
-RUN mkdir -p /data
-ENV DATASENTRY_DB=/data/datasentry.db
+ENV DATASENTRY_DB=/tmp/datasentry.db
 
 EXPOSE 8000
 
