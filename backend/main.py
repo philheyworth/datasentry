@@ -682,6 +682,44 @@ def create_customer(body: NewCustomerRequest, payload: dict = Depends(require_ad
 # AGENT DOWNLOAD  (JWT auth — generates pre-configured installer)
 # ─────────────────────────────────────────────────────────────────────────────
 
+_EXE_CACHE: dict = {"bytes": None, "fetched_at": None}
+_BASE_EXE_URL = "https://github.com/philheyworth/datasentry/releases/latest/download/DataSentry.exe"
+_EXE_CACHE_TTL_HOURS = 6
+
+def _fetch_base_exe() -> bytes | None:
+    """
+    Fetch the pre-built DataSentry.exe from GitHub Releases.
+    Caches in memory for 6 hours so every download doesn't hit GitHub.
+    Returns None if unavailable (build not yet published).
+    """
+    import urllib.request
+    from datetime import timezone
+
+    now = datetime.now(timezone.utc)
+    cached = _EXE_CACHE.get("bytes")
+    fetched_at = _EXE_CACHE.get("fetched_at")
+
+    if cached and fetched_at:
+        age_hours = (now - fetched_at).total_seconds() / 3600
+        if age_hours < _EXE_CACHE_TTL_HOURS:
+            return cached
+
+    try:
+        print(f"[DataSentry] Fetching base EXE from GitHub Releases...", flush=True)
+        req = urllib.request.Request(
+            _BASE_EXE_URL,
+            headers={"User-Agent": "DataSentry-Backend/2.0"},
+        )
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            data = resp.read()
+        _EXE_CACHE["bytes"] = data
+        _EXE_CACHE["fetched_at"] = now
+        print(f"[DataSentry] EXE fetched: {len(data):,} bytes", flush=True)
+        return data
+    except Exception as e:
+        print(f"[DataSentry] WARNING: Could not fetch base EXE: {e}", flush=True)
+        return None
+
 @app.get("/api/download/config")
 def download_config(request: Request, payload: dict = Depends(require_user),
                     db: sqlite3.Connection = Depends(get_db)):
@@ -768,79 +806,60 @@ customer_id   = {cust_id}
 customer_name = {cust_name}
 """
 
-    exe_url   = "https://github.com/philheyworth/datasentry/releases/latest/download/DataSentry.exe"
-    slug      = (cust_id or "datasentry").replace(" ", "-").lower()
+    slug = (cust_id or "datasentry").replace(" ", "-").lower()
 
-    bat = f"""@echo off
-REM DataSentry Agent Installer
-REM Customer: {cust_name or 'N/A'}
-REM Generated: {datetime.utcnow().strftime('%Y-%m-%d')}
+    # ── Fetch the pre-built EXE from GitHub Releases ──────────────────────────
+    exe_bytes = _fetch_base_exe()
 
-setlocal
-set INSTALL_DIR=%ProgramFiles%\\DataSentry
-set EXE=%INSTALL_DIR%\\DataSentry.exe
-set CFG=%INSTALL_DIR%\\datasentry.cfg
-
-echo Installing DataSentry agent for {cust_name or 'your organisation'}...
-if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"
-
-REM Download the agent executable
-echo Downloading DataSentry.exe...
-powershell -Command "Invoke-WebRequest -Uri '{exe_url}' -OutFile '%EXE%'"
-if not exist "%EXE%" (
-    echo ERROR: Download failed. Check your internet connection.
-    pause & exit /b 1
-)
-
-REM Write the pre-configured config file
-echo Writing configuration...
-(
-echo [datasentry]
-echo api_url       = {api_url}
-echo api_key       = {api_key}
-echo customer_id   = {cust_id}
-echo customer_name = {cust_name}
-) > "%CFG%"
-
-REM Create a scheduled task to run the scan weekly
-echo Scheduling weekly scan...
-schtasks /create /tn "DataSentry Weekly Scan" ^
-    /tr "\"%EXE%\" --cli" ^
-    /sc WEEKLY /d MON /st 07:00 ^
-    /ru SYSTEM /f >nul 2>&1
-
-REM Run first scan immediately
-echo Running initial scan (this may take a few minutes)...
-"%EXE%" --cli
-
-echo.
-echo DataSentry installed successfully!
-echo Weekly scans are scheduled every Monday at 07:00.
-pause
-"""
-
-    # Build ZIP in memory
+    # ── Build ZIP in memory ───────────────────────────────────────────────────
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr("install-datasentry.bat", bat)
-        zf.writestr("datasentry.cfg",         cfg)
-        zf.writestr("README.txt", f"""DataSentry Agent Installer
-Customer: {cust_name or 'N/A'}
+        # Pre-configured agent EXE (reads datasentry.cfg from its own folder)
+        if exe_bytes:
+            zf.writestr(f"DataSentry.exe", exe_bytes)
+
+        # Customer-specific config — EXE reads this automatically on launch
+        zf.writestr("datasentry.cfg", cfg)
+
+        # Scheduled-task helper (optional, for IT deployment)
+        bat = f"""@echo off
+REM DataSentry — Install & Schedule  ({cust_name or slug})
+REM Run as Administrator on each endpoint.
+setlocal
+set HERE=%~dp0
+set INSTALL_DIR=%ProgramFiles%\\DataSentry\\{slug}
+if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"
+copy /y "%HERE%DataSentry.exe" "%INSTALL_DIR%\\DataSentry.exe" >nul
+copy /y "%HERE%datasentry.cfg" "%INSTALL_DIR%\\datasentry.cfg" >nul
+schtasks /create /tn "DataSentry - {cust_name or slug}" ^
+    /tr "\"%INSTALL_DIR%\\DataSentry.exe\" --cli" ^
+    /sc WEEKLY /d MON /st 07:00 /ru SYSTEM /f >nul 2>&1
+echo Installed. Running first scan now...
+"%INSTALL_DIR%\\DataSentry.exe" --cli
+echo Done.
+pause
+"""
+        zf.writestr("install.bat", bat)
+        zf.writestr("README.txt", f"""DataSentry Agent — {cust_name or slug}
 Generated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}
 
-HOW TO DEPLOY
-=============
-1. Place install-datasentry.bat and datasentry.cfg in the same folder.
-2. Run install-datasentry.bat as Administrator on each endpoint.
-   - Or deploy via Group Policy / Intune / SCCM using the BAT as a startup script.
-3. The agent installs itself to Program Files and schedules a weekly scan.
+QUICK START (single machine)
+=============================
+1. Unzip this folder somewhere (e.g. Desktop).
+2. Double-click DataSentry.exe — it will scan and upload results automatically.
+   No setup required; it is pre-configured for your organisation.
 
-The config file is pre-configured for your organisation — no manual
-entry needed on each machine.
+DEPLOY TO MULTIPLE MACHINES (IT admin)
+=======================================
+1. Run install.bat as Administrator on each endpoint  (or deploy via
+   Group Policy / Intune / SCCM as a startup script).
+   It copies the files to Program Files and schedules a weekly scan.
+
+{'NOTE: DataSentry.exe could not be bundled (build not yet available).' + chr(10) + 'Download it from: https://github.com/philheyworth/datasentry/releases/latest' if not exe_bytes else ''}
 """)
     buf.seek(0)
 
-    filename = f"datasentry-installer-{slug}.zip"
+    filename = f"DataSentry-{slug}.zip"
     return StreamingResponse(
         buf,
         media_type="application/zip",
