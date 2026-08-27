@@ -38,6 +38,8 @@ except ImportError:
 # ─────────────────────────────────────────────────────────────────────────────
 
 DATABASE_PATH  = os.environ.get("DATASENTRY_DB", "datasentry.db")
+# Ensure the DB directory exists (important when Railway volume is mounted at /data)
+Path(DATABASE_PATH).parent.mkdir(parents=True, exist_ok=True)
 MASTER_API_KEY = os.environ.get("DATASENTRY_MASTER_KEY", "changeme-set-in-env")
 ALLOWED_ORIGINS = os.environ.get("DATASENTRY_CORS_ORIGINS", "*").split(",")
 JWT_ALGORITHM  = "HS256"
