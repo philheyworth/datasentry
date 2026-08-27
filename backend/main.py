@@ -238,6 +238,75 @@ def init_db():
         conn.commit()
         print("  Admin password synced from DATASENTRY_ADMIN_PASSWORD env var.")
 
+    # ── Seed customer from env vars (survives redeploys without a volume) ────────
+    # Set these in Railway environment variables once and the customer is
+    # recreated automatically every time the container restarts.
+    #
+    #   DATASENTRY_SEED_CUSTOMER_ID       e.g.  my-company
+    #   DATASENTRY_SEED_CUSTOMER_NAME     e.g.  My Company Ltd
+    #   DATASENTRY_SEED_CUSTOMER_EMAIL    e.g.  admin@mycompany.com
+    #   DATASENTRY_SEED_CUSTOMER_PASSWORD e.g.  a-strong-password
+    #   DATASENTRY_SEED_SCANNER_KEY       e.g.  dsk_abc123  (optional, auto-generated if unset)
+    seed_cid   = os.environ.get("DATASENTRY_SEED_CUSTOMER_ID", "").strip()
+    seed_cname = os.environ.get("DATASENTRY_SEED_CUSTOMER_NAME", "").strip()
+    seed_email = os.environ.get("DATASENTRY_SEED_CUSTOMER_EMAIL", "").strip()
+    seed_pass  = os.environ.get("DATASENTRY_SEED_CUSTOMER_PASSWORD", "").strip()
+    seed_key   = os.environ.get("DATASENTRY_SEED_SCANNER_KEY", "").strip()
+
+    if seed_cid and seed_cname and seed_email and seed_pass:
+        # Upsert the customer row
+        conn.execute(
+            "INSERT OR IGNORE INTO customers (customer_id, customer_name) VALUES (?,?)",
+            (seed_cid, seed_cname)
+        )
+        conn.execute(
+            "UPDATE customers SET customer_name=? WHERE customer_id=?",
+            (seed_cname, seed_cid)
+        )
+
+        # Upsert the customer portal user
+        existing_user = conn.execute(
+            "SELECT id FROM users WHERE email=?", (seed_email,)
+        ).fetchone()
+        pw_hash = _hash_password(seed_pass)
+        if existing_user:
+            conn.execute(
+                "UPDATE users SET password_hash=?, customer_id=?, customer_name=?, role='viewer' WHERE email=?",
+                (pw_hash, seed_cid, seed_cname, seed_email)
+            )
+        else:
+            conn.execute(
+                "INSERT INTO users (email, name, password_hash, customer_id, customer_name, role) VALUES (?,?,?,?,?,'viewer')",
+                (seed_email, seed_cname, pw_hash, seed_cid, seed_cname)
+            )
+
+        # Upsert the scanner API key
+        if seed_key:
+            key_hash = hashlib.sha256(seed_key.encode()).hexdigest()
+            existing_key = conn.execute(
+                "SELECT id FROM api_keys WHERE key_hash=?", (key_hash,)
+            ).fetchone()
+            if not existing_key:
+                conn.execute(
+                    "INSERT INTO api_keys (key_hash, label, customer_id, created_at, active) VALUES (?,?,?,?,1)",
+                    (key_hash, f"Seed key — {seed_cname}", seed_cid, datetime.utcnow().isoformat())
+                )
+        else:
+            # Auto-generate a stable key derived from the customer_id (deterministic)
+            import hmac as _hmac_mod
+            seed_key = "dsk_" + _hmac_mod.new(
+                JWT_SECRET.encode(), seed_cid.encode(), "sha256"
+            ).hexdigest()[:32]
+            key_hash = hashlib.sha256(seed_key.encode()).hexdigest()
+            conn.execute(
+                "INSERT OR IGNORE INTO api_keys (key_hash, label, customer_id, created_at, active) VALUES (?,?,?,?,1)",
+                (key_hash, f"Auto-seed key — {seed_cname}", seed_cid, datetime.utcnow().isoformat())
+            )
+
+        conn.commit()
+        print(f"[DataSentry] Seed customer '{seed_cid}' ({seed_cname}) ensured in DB.")
+        print(f"[DataSentry] Seed scanner key: {seed_key}")
+
     conn.close()
 
 
