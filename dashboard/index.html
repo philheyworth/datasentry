@@ -386,6 +386,9 @@ tr:hover td{background:var(--surface2);}
   <div class="nav-item" onclick="showSection('api',this)">
     <span class="nav-icon">⊡</span> API / Config
   </div>
+  <div class="nav-item" onclick="showSection('account',this)">
+    <span class="nav-icon">◎</span> Account
+  </div>
   <div class="sidebar-footer">
     <div><span class="status-dot"></span><span id="sidebar-status">Connecting…</span></div>
     <div id="sidebar-updated" style="margin-top:4px;font-family:'JetBrains Mono',monospace;font-size:10px;"></div>
@@ -721,6 +724,57 @@ tr:hover td{background:var(--surface2);}
             DATASENTRY_CUSTOMER_NAME=<span style="color:#A78BFA;">"Customer Name"</span> \<br>
             ./datasentry-scanner --cli
           </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="section-account">
+      <div class="page-heading">Account</div>
+      <div class="page-sub">Manage your login credentials and users.</div>
+
+      <div class="card" style="max-width:500px;">
+        <div class="card-header"><span class="card-title">Change Password</span></div>
+        <div class="card-body">
+          <div style="display:grid;gap:14px;">
+            <div>
+              <label style="display:block;font-size:12px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Current Password</label>
+              <input id="acc-cur-pw" type="password" style="width:100%;padding:9px 12px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:13px;outline:none;border-radius:4px;">
+            </div>
+            <div>
+              <label style="display:block;font-size:12px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">New Password</label>
+              <input id="acc-new-pw" type="password" style="width:100%;padding:9px 12px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:13px;outline:none;border-radius:4px;">
+            </div>
+            <div>
+              <label style="display:block;font-size:12px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Confirm New Password</label>
+              <input id="acc-conf-pw" type="password" style="width:100%;padding:9px 12px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:13px;outline:none;border-radius:4px;">
+            </div>
+            <div>
+              <button class="btn btn-primary" onclick="changePassword()">Update Password</button>
+            </div>
+            <div id="acc-pw-status" style="font-size:12.5px;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" id="admin-users-card" style="max-width:500px;display:none;">
+        <div class="card-header"><span class="card-title">Users</span>
+          <button class="btn btn-primary btn-sm" onclick="toggleAddUser()">+ Add User</button>
+        </div>
+        <div class="card-body">
+          <div id="add-user-form" style="display:none;background:var(--surface2);border-radius:6px;padding:16px;margin-bottom:16px;display:none;">
+            <div style="display:grid;gap:10px;">
+              <input id="new-user-email" type="email" placeholder="Email" style="padding:8px 10px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:13px;border-radius:4px;outline:none;">
+              <input id="new-user-name" type="text" placeholder="Name" style="padding:8px 10px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:13px;border-radius:4px;outline:none;">
+              <input id="new-user-pw" type="password" placeholder="Password" style="padding:8px 10px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:13px;border-radius:4px;outline:none;">
+              <select id="new-user-role" style="padding:8px 10px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:13px;border-radius:4px;outline:none;">
+                <option value="admin">Admin</option>
+                <option value="viewer" selected>Viewer</option>
+              </select>
+              <button class="btn btn-primary btn-sm" onclick="createUser()">Create User</button>
+              <div id="new-user-status" style="font-size:12px;"></div>
+            </div>
+          </div>
+          <div id="users-list" style="font-size:13px;">Loading…</div>
         </div>
       </div>
     </section>
@@ -1138,14 +1192,14 @@ function showSection(name,el){
   const titles={overview:"Dashboard",customers:"Customers",
     "customer-detail":"Customer Detail",machines:"All Machines",
     pii:"PII Findings",locations:"Storage Map",compliance:"Compliance",
-    "add-customer":"Add Customer",api:"API & Config"};
+    "add-customer":"Add Customer",api:"API & Config",account:"Account"};
   const custCount=LIVE.customers.length, machCount=LIVE.machines.length;
   const subs={overview:custCount||machCount?`— ${custCount} customer${custCount!==1?"s":""}, ${machCount} machine${machCount!==1?"s":""}`:"",customers:"— select a customer",
     "customer-detail":"",machines:"— complete fleet",
     pii:"— data at risk",locations:"— where data lives",
     compliance:"— GDPR & DLP status",
     "add-customer":"— create a new customer portal login and scanner key",
-    api:"— backend settings"};
+    api:"— backend settings",account:"— password & users"};
   document.getElementById("topbar-title").textContent=titles[name]||name;
   document.getElementById("topbar-sub").textContent=subs[name]||"";
   // Pre-fill API config from live session when navigating to that page
@@ -1154,6 +1208,7 @@ function showSection(name,el){
     if(urlEl&&DS_URL&&!urlEl.value)urlEl.value=DS_URL;
     updateSnippet();
   }
+  if(name==="account") loadUsers();
 }
 
 function updateSnippet(){
@@ -1288,6 +1343,62 @@ async function connectApi(){
   }catch(e){
     document.getElementById("cfg-status").innerHTML=`<span style="color:var(--risk);">✗ Cannot reach server</span>`;
   }
+}
+
+// ── ACCOUNT ──────────────────────────────────────────────
+async function changePassword(){
+  const cur=document.getElementById("acc-cur-pw").value;
+  const nw=document.getElementById("acc-new-pw").value;
+  const conf=document.getElementById("acc-conf-pw").value;
+  const st=document.getElementById("acc-pw-status");
+  if(!cur||!nw){st.style.color="var(--risk)";st.textContent="Please fill in all fields.";return;}
+  if(nw!==conf){st.style.color="var(--risk)";st.textContent="New passwords do not match.";return;}
+  if(nw.length<8){st.style.color="var(--risk)";st.textContent="Password must be at least 8 characters.";return;}
+  try{
+    const r=await api("/auth/change-password",{method:"POST",body:JSON.stringify({current_password:cur,new_password:nw})});
+    if(!r.ok){const e=await r.json().catch(()=>({}));throw new Error(e.detail||r.statusText);}
+    st.style.color="var(--ok)";st.textContent="✓ Password updated successfully.";
+    document.getElementById("acc-cur-pw").value="";
+    document.getElementById("acc-new-pw").value="";
+    document.getElementById("acc-conf-pw").value="";
+  }catch(e){
+    st.style.color="var(--risk)";st.textContent="✗ "+e.message;
+  }
+}
+function toggleAddUser(){
+  const f=document.getElementById("add-user-form");
+  f.style.display=f.style.display==="none"?"block":"none";
+}
+async function loadUsers(){
+  if(!DS_USER||DS_USER.role!=="admin")return;
+  document.getElementById("admin-users-card").style.display="block";
+  try{
+    const r=await api("/auth/users",{method:"GET"});
+    if(!r.ok) throw new Error(r.statusText);
+    const data=await r.json();
+    const rows=(data.users||[]).map(u=>`
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);">
+        <div><div style="font-weight:600;">${u.name||u.email}</div><div style="font-size:11px;color:var(--text2);">${u.email} · ${u.role}</div></div>
+      </div>`).join("");
+    document.getElementById("users-list").innerHTML=rows||"No users found.";
+  }catch(e){document.getElementById("users-list").textContent="Error: "+e.message;}
+}
+async function createUser(){
+  const email=document.getElementById("new-user-email").value.trim();
+  const name=document.getElementById("new-user-name").value.trim();
+  const pw=document.getElementById("new-user-pw").value;
+  const role=document.getElementById("new-user-role").value;
+  const st=document.getElementById("new-user-status");
+  if(!email||!pw){st.style.color="var(--risk)";st.textContent="Email and password required.";return;}
+  try{
+    const r=await api("/auth/users",{method:"POST",body:JSON.stringify({email,name,password:pw,role})});
+    if(!r.ok){const e=await r.json().catch(()=>({}));throw new Error(e.detail||r.statusText);}
+    st.style.color="var(--ok)";st.textContent="✓ User created.";
+    document.getElementById("new-user-email").value="";
+    document.getElementById("new-user-name").value="";
+    document.getElementById("new-user-pw").value="";
+    loadUsers();
+  }catch(e){st.style.color="var(--risk)";st.textContent="✗ "+e.message;}
 }
 
 // ── ADD CUSTOMER (admin) ─────────────────────────────────
