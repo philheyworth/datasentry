@@ -167,9 +167,10 @@ def init_db():
         print(f"  (shown once — used by scanner agents to submit reports)")
         print(f"{'='*62}")
 
-    # ── First-run: create admin user ───────────────────────────────────────────
-    if conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0:
-        admin_password = secrets.token_urlsafe(10)
+    # ── Admin user: create on first run, or enforce password from env var ────────
+    env_password = os.environ.get("DATASENTRY_ADMIN_PASSWORD", "")
+    if conn.execute("SELECT COUNT(*) FROM users WHERE email='admin@datasentry.local'").fetchone()[0] == 0:
+        admin_password = env_password or secrets.token_urlsafe(10)
         admin_hash     = _hash_password(admin_password)
         conn.execute(
             "INSERT INTO users (email, name, password_hash, customer_id, role) VALUES (?,?,?,NULL,'admin')",
@@ -178,8 +179,16 @@ def init_db():
         conn.commit()
         print(f"\n  Dashboard login   : admin@datasentry.local")
         print(f"  Dashboard password: {admin_password}")
-        print(f"  (change this via POST /auth/change-password after first login)")
+        print(f"  (set DATASENTRY_ADMIN_PASSWORD env var to lock this in)")
         print(f"{'='*62}\n")
+    elif env_password:
+        # If env var is set, always keep the admin password in sync with it
+        conn.execute(
+            "UPDATE users SET password_hash=? WHERE email='admin@datasentry.local'",
+            (_hash_password(env_password),)
+        )
+        conn.commit()
+        print("  Admin password synced from DATASENTRY_ADMIN_PASSWORD env var.")
 
     conn.close()
 
