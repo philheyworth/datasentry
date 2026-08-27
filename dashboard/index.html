@@ -687,11 +687,13 @@ tr:hover td{background:var(--surface2);}
             <div>
               <label style="display:block;font-size:12px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Backend API URL</label>
               <input id="cfg-url" type="url" placeholder="https://your-datasentry.fly.dev"
+                oninput="updateSnippet()"
                 style="width:100%;padding:9px 12px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:13px;outline:none;border-radius:4px;">
             </div>
             <div>
               <label style="display:block;font-size:12px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">API Key</label>
               <input id="cfg-key" type="password" placeholder="dsk_…"
+                oninput="updateSnippet()"
                 style="width:100%;padding:9px 12px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:13px;outline:none;border-radius:4px;">
             </div>
             <div>
@@ -707,16 +709,16 @@ tr:hover td{background:var(--surface2);}
           <p style="font-size:13.5px;color:var(--text2);margin-bottom:16px;">Pass these environment variables when deploying the scanner to a customer machine. Use <code style="font-family:'JetBrains Mono',monospace;font-size:12px;">--customer-id</code> and <code style="font-family:'JetBrains Mono',monospace;font-size:12px;">--customer-name</code> to group machines by customer in the dashboard.</p>
           <div style="background:var(--sidebar-bg);color:#A8D4C0;font-family:'JetBrains Mono',monospace;font-size:12.5px;padding:18px 20px;border-radius:4px;line-height:1.9;">
             <span style="color:#6A90AB;"># Windows — set these then run the .exe</span><br>
-            set DATASENTRY_API_URL=<span style="color:#00C49A;">https://your-api.example.com</span><br>
-            set DATASENTRY_API_KEY=<span style="color:#FBB040;">dsk_your_key_here</span><br>
-            set DATASENTRY_CUSTOMER_ID=<span style="color:#A78BFA;">acme-corp</span><br>
-            set DATASENTRY_CUSTOMER_NAME=<span style="color:#A78BFA;">Acme Corporation</span><br>
+            set DATASENTRY_API_URL=<span id="snip-url-win" style="color:#00C49A;">https://your-api.example.com</span><br>
+            set DATASENTRY_API_KEY=<span id="snip-key-win" style="color:#FBB040;">dsk_your_key_here</span><br>
+            set DATASENTRY_CUSTOMER_ID=<span style="color:#A78BFA;">your-customer-id</span><br>
+            set DATASENTRY_CUSTOMER_NAME=<span style="color:#A78BFA;">Customer Name</span><br>
             datasentry-scanner.exe<br><br>
             <span style="color:#6A90AB;"># macOS / Linux</span><br>
-            DATASENTRY_API_URL=<span style="color:#00C49A;">https://your-api.example.com</span> \<br>
-            DATASENTRY_API_KEY=<span style="color:#FBB040;">dsk_your_key_here</span> \<br>
-            DATASENTRY_CUSTOMER_ID=<span style="color:#A78BFA;">acme-corp</span> \<br>
-            DATASENTRY_CUSTOMER_NAME=<span style="color:#A78BFA;">"Acme Corporation"</span> \<br>
+            DATASENTRY_API_URL=<span id="snip-url-mac" style="color:#00C49A;">https://your-api.example.com</span> \<br>
+            DATASENTRY_API_KEY=<span id="snip-key-mac" style="color:#FBB040;">dsk_your_key_here</span> \<br>
+            DATASENTRY_CUSTOMER_ID=<span style="color:#A78BFA;">your-customer-id</span> \<br>
+            DATASENTRY_CUSTOMER_NAME=<span style="color:#A78BFA;">"Customer Name"</span> \<br>
             ./datasentry-scanner --cli
           </div>
         </div>
@@ -1138,6 +1140,19 @@ function showSection(name,el){
     api:"— backend settings"};
   document.getElementById("topbar-title").textContent=titles[name]||name;
   document.getElementById("topbar-sub").textContent=subs[name]||"";
+  // Pre-fill API config from live session when navigating to that page
+  if(name==="api"){
+    const urlEl=document.getElementById("cfg-url");
+    if(urlEl&&DS_URL&&!urlEl.value)urlEl.value=DS_URL;
+    updateSnippet();
+  }
+}
+
+function updateSnippet(){
+  const url=(document.getElementById("cfg-url")?.value?.trim()||DS_URL||"https://your-api.example.com");
+  const key=(document.getElementById("cfg-key")?.value?.trim()||"dsk_your_key_here");
+  ["snip-url-win","snip-url-mac"].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=url;});
+  ["snip-key-win","snip-key-mac"].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=key;});
 }
 
 // ── AUTH & LOGIN ──────────────────────────────────────────
