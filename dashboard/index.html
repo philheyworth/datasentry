@@ -382,6 +382,9 @@ tr:hover td{background:var(--surface2);}
   <div class="nav-item" id="nav-add-customer" style="display:none;" onclick="showSection('add-customer',this)">
     <span class="nav-icon">＋</span> Add Customer
   </div>
+  <div class="nav-item" id="nav-download-scanner" style="display:none;" onclick="showSection('download-scanner',this)">
+    <span class="nav-icon">⬇</span> Download Scanner
+  </div>
   <div class="nav-section">Settings</div>
   <div class="nav-item" onclick="showSection('api',this)">
     <span class="nav-icon">⊡</span> API / Config
@@ -724,6 +727,33 @@ tr:hover td{background:var(--surface2);}
             DATASENTRY_CUSTOMER_NAME=<span style="color:#A78BFA;">"Customer Name"</span> \<br>
             ./datasentry-scanner --cli
           </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="section-download-scanner">
+      <div class="page-heading">Download Scanner</div>
+      <div class="page-sub">Get the pre-configured agent installer for your machines.</div>
+      <div class="card" style="max-width:600px;">
+        <div class="card-header"><span class="card-title">Windows Agent Installer</span></div>
+        <div class="card-body">
+          <p style="font-size:13.5px;color:var(--text2);margin-bottom:20px;">
+            Downloads a ZIP containing <code style="font-family:'JetBrains Mono',monospace;">DataSentry.exe</code>, a pre-configured <code style="font-family:'JetBrains Mono',monospace;">datasentry.cfg</code>, and a one-click <code style="font-family:'JetBrains Mono',monospace;">install.bat</code>. Run install.bat on each machine — no manual configuration needed.
+          </p>
+          <button class="btn btn-primary" id="dl-scanner-btn" onclick="downloadAgentMain()" style="font-size:15px;padding:12px 28px;">
+            ⬇ Download Agent ZIP
+          </button>
+          <div id="dl-scanner-status" style="margin-top:12px;font-size:12.5px;color:var(--text2);"></div>
+        </div>
+      </div>
+      <div class="card" style="max-width:600px;">
+        <div class="card-header"><span class="card-title">Installation Steps</span></div>
+        <div class="card-body" style="font-size:13.5px;color:var(--text2);line-height:2;">
+          1. Click <strong>Download Agent ZIP</strong> above<br>
+          2. Copy the ZIP to each Windows machine you want to scan<br>
+          3. Extract the ZIP and double-click <strong>install.bat</strong><br>
+          4. The scanner runs, submits results, and exits — no reboot needed<br>
+          5. Results appear in this dashboard within seconds
         </div>
       </div>
     </section>
@@ -1192,14 +1222,14 @@ function showSection(name,el){
   const titles={overview:"Dashboard",customers:"Customers",
     "customer-detail":"Customer Detail",machines:"All Machines",
     pii:"PII Findings",locations:"Storage Map",compliance:"Compliance",
-    "add-customer":"Add Customer",api:"API & Config",account:"Account"};
+    "add-customer":"Add Customer",api:"API & Config",account:"Account","download-scanner":"Download Scanner"};
   const custCount=LIVE.customers.length, machCount=LIVE.machines.length;
   const subs={overview:custCount||machCount?`— ${custCount} customer${custCount!==1?"s":""}, ${machCount} machine${machCount!==1?"s":""}`:"",customers:"— select a customer",
     "customer-detail":"",machines:"— complete fleet",
     pii:"— data at risk",locations:"— where data lives",
     compliance:"— GDPR & DLP status",
     "add-customer":"— create a new customer portal login and scanner key",
-    api:"— backend settings",account:"— password & users"};
+    api:"— backend settings",account:"— password & users","download-scanner":"— get the agent installer"};
   document.getElementById("topbar-title").textContent=titles[name]||name;
   document.getElementById("topbar-sub").textContent=subs[name]||"";
   // Pre-fill API config from live session when navigating to that page
@@ -1288,6 +1318,9 @@ function showUserBadge(){
     const el=document.getElementById(id);
     if(el)el.style.display=isGlobalAdmin?"":"none";
   });
+  // Show download nav for customer-scoped users
+  const dlNav=document.getElementById("nav-download-scanner");
+  if(dlNav)dlNav.style.display=DS_USER.customer_id?"":"none";
 }
 
 async function loadLiveData(){
@@ -1307,6 +1340,8 @@ async function loadLiveData(){
     // Show download card only for customer-scoped users (not global admin)
     if(DS_USER&&DS_USER.customer_id){
       document.getElementById("cust-download-card").style.display="flex";
+      // Auto-navigate customer users to download page on first load
+      showSection('download-scanner', document.getElementById('nav-download-scanner'));
     }
     initDashboard();
   }catch(e){
@@ -1342,6 +1377,27 @@ async function connectApi(){
     else document.getElementById("cfg-status").innerHTML=`<span style="color:var(--risk);">✗ Server returned ${r.status}</span>`;
   }catch(e){
     document.getElementById("cfg-status").innerHTML=`<span style="color:var(--risk);">✗ Cannot reach server</span>`;
+  }
+}
+
+// ── DOWNLOAD SCANNER (customer page) ─────────────────────
+async function downloadAgentMain(){
+  const btn=document.getElementById("dl-scanner-btn");
+  const st=document.getElementById("dl-scanner-status");
+  btn.disabled=true;btn.textContent="Generating…";st.textContent="";
+  try{
+    const r=await api("/api/download/installer",{method:"GET"});
+    if(!r.ok) throw new Error("Server returned "+r.status);
+    const blob=await r.blob();
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(blob);
+    a.download=r.headers.get("content-disposition")?.match(/filename="(.+)"/)?.[1]||"datasentry-installer.zip";
+    a.click();
+    st.style.color="var(--ok)";st.textContent="✓ Download started.";
+  }catch(e){
+    st.style.color="var(--risk)";st.textContent="✗ "+e.message;
+  }finally{
+    btn.disabled=false;btn.textContent="⬇ Download Agent ZIP";
   }
 }
 
