@@ -8,6 +8,9 @@ on:
       - '.github/workflows/build-scanner.yml'
   workflow_dispatch:   # allow manual trigger from GitHub Actions tab
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
