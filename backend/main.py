@@ -29,7 +29,7 @@ import psycopg2.errorcodes
 
 from fastapi import FastAPI, HTTPException, Depends, Header, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse, FileResponse, RedirectResponse
 from pydantic import BaseModel
 
 try:
@@ -1354,6 +1354,23 @@ def list_scan_jobs(machine_id: Optional[str] = None,
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# DASHBOARD
+# ─────────────────────────────────────────────────────────────────────────────
+
+_DASHBOARD = Path(__file__).parent / "dashboard.html"
+
+@app.get("/")
+def serve_root():
+    """Serve the DataSentry dashboard."""
+    if _DASHBOARD.exists():
+        return FileResponse(_DASHBOARD, media_type="text/html")
+    return JSONResponse({"service": "DataSentry API", "version": "3.0.0"})
+
+@app.get("/login")
+def serve_login():
+    """Redirect /login to the dashboard (login is on the dashboard itself)."""
+    return RedirectResponse(url="/", status_code=302)
+
 # HEALTH
 # ─────────────────────────────────────────────────────────────────────────────
 
