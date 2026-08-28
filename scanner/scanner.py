@@ -1122,12 +1122,35 @@ def run_wizard(prefill: dict) -> Optional[dict]:
 
     # ── Step 4: Scanning ──────────────────────────────────────────────────────
     def step_scan():
+        import time as _time
         f = tk.Frame(root, bg=WHITE)
         header_band("Scanning…", "Discovering and analysing your data locations.")
 
+        # ── Timing row ────────────────────────────────────────────────────────
+        _scan_start = _time.time()
+        _start_str  = _time.strftime("%H:%M:%S", _time.localtime(_scan_start))
+
+        timing_frame = tk.Frame(f, bg=WHITE)
+        timing_frame.pack(fill="x", padx=28, pady=(12, 0))
+        tk.Label(timing_frame, text=f"Started: {_start_str}",
+                 font=("Helvetica", 9), bg=WHITE, fg=TEXT2).pack(side="left")
+        elapsed_var = tk.StringVar(value="0:00:00")
+        tk.Label(timing_frame, text="  ·  Running for:",
+                 font=("Helvetica", 9), bg=WHITE, fg=TEXT2).pack(side="left")
+        tk.Label(timing_frame, textvariable=elapsed_var,
+                 font=("Helvetica", 9, "bold"), bg=WHITE, fg=TEXT).pack(side="left", padx=4)
+
+        def _tick_elapsed():
+            secs = int(_time.time() - _scan_start)
+            h, rem = divmod(secs, 3600)
+            m, s   = divmod(rem, 60)
+            elapsed_var.set(f"{h}:{m:02d}:{s:02d}")
+            f._after_id = root.after(1000, _tick_elapsed)
+        f._after_id = root.after(1000, _tick_elapsed)
+
         status_var = tk.StringVar(value="Starting…")
         tk.Label(f, textvariable=status_var, font=("Helvetica", 10),
-                 bg=WHITE, fg=TEXT2, wraplength=460, anchor="w").pack(fill="x", padx=28, pady=(16, 4))
+                 bg=WHITE, fg=TEXT2, wraplength=460, anchor="w").pack(fill="x", padx=28, pady=(6, 4))
 
         bar = ttk.Progressbar(f, mode="indeterminate", length=464)
         bar.pack(padx=28, pady=4)
@@ -1190,10 +1213,11 @@ def run_wizard(prefill: dict) -> Optional[dict]:
                      bg=WHITE, fg=TEXT).pack(side="left", padx=8)
 
         submitted = report.get("submitted", False)
-        msg = ("Results sent to your DataSentry dashboard. ✓"
-               if submitted else "Results saved locally.")
-        tk.Label(f, text=msg, font=("Helvetica", 10), bg=WHITE, fg=TEXT2,
-                 wraplength=460, anchor="w").pack(fill="x", padx=28, pady=(16, 0))
+        upload_msg = ("✓ Successfully uploaded to DataSentry Portal"
+                      if submitted else "Results saved locally (not submitted).")
+        upload_color = "#00A87E" if submitted else TEXT2
+        tk.Label(f, text=upload_msg, font=("Helvetica", 10, "bold"), bg=WHITE,
+                 fg=upload_color, wraplength=460, anchor="w").pack(fill="x", padx=28, pady=(16, 0))
 
         btn_row(f, "Close", root.destroy,
                 "Scan Again", lambda: (clear(), step_scan()))
@@ -1235,6 +1259,29 @@ def run_gui(api_url: str, api_key: str, customer_id: str = "", customer_name: st
         tk.Label(root, text=f"Organisation: {customer_name}", font=("Helvetica", 10),
                  bg=WHITE, fg=TEXT2, anchor="w").pack(fill="x", padx=24, pady=(10, 0))
 
+    # ── Timing row ────────────────────────────────────────────────────────────
+    import time as _time
+    _scan_start = _time.time()
+    _start_str  = _time.strftime("%H:%M:%S", _time.localtime(_scan_start))
+
+    timing_frame = tk.Frame(root, bg=WHITE)
+    timing_frame.pack(fill="x", padx=24, pady=(2, 0))
+    tk.Label(timing_frame, text=f"Started: {_start_str}",
+             font=("Helvetica", 9), bg=WHITE, fg=TEXT2).pack(side="left")
+    elapsed_var = tk.StringVar(value="0:00:00")
+    tk.Label(timing_frame, text="  ·  Running for:",
+             font=("Helvetica", 9), bg=WHITE, fg=TEXT2).pack(side="left")
+    tk.Label(timing_frame, textvariable=elapsed_var,
+             font=("Helvetica", 9, "bold"), bg=WHITE, fg=TEXT).pack(side="left", padx=4)
+
+    def _tick_elapsed():
+        secs = int(_time.time() - _scan_start)
+        h, rem = divmod(secs, 3600)
+        m, s   = divmod(rem, 60)
+        elapsed_var.set(f"{h}:{m:02d}:{s:02d}")
+        root._elapsed_after = root.after(1000, _tick_elapsed)
+    root._elapsed_after = root.after(1000, _tick_elapsed)
+
     status_var = tk.StringVar(value="Preparing scan…")
     tk.Label(root, textvariable=status_var, font=("Helvetica", 10),
              bg=WHITE, fg=TEXT2, anchor="w", wraplength=470).pack(fill="x", padx=24, pady=4)
@@ -1270,12 +1317,25 @@ def run_gui(api_url: str, api_key: str, customer_id: str = "", customer_name: st
 
     def done(rep):
         bar.stop()
+        # cancel the elapsed ticker
+        try:
+            root.after_cancel(root._elapsed_after)
+        except Exception:
+            pass
         s = rep.get("summary", {})
-        append(f"\n✓ Scan complete — {s.get('total_files',0):,} files, "
-               f"{s.get('total_pii_files',0):,} with PII")
+        total_secs = int(_time.time() - _scan_start)
+        h, rem = divmod(total_secs, 3600)
+        m, sc  = divmod(rem, 60)
+        duration = f"{h}:{m:02d}:{sc:02d}" if h else f"{m}:{sc:02d}"
+        append(f"\n✓ Scan complete — {s.get('total_files',0):,} files scanned in {duration}")
+        if s.get("total_pii_files", 0):
+            append(f"  ⚠  {s.get('total_pii_files',0):,} files contain PII")
         if rep.get("submitted"):
-            append("  Report submitted to DataSentry ✓")
-        status_var.set("Done. You may close this window.")
+            append("  ✓ Successfully uploaded to DataSentry Portal")
+        else:
+            append("  Results saved locally (not submitted).")
+        elapsed_var.set(f"{h}:{m:02d}:{sc:02d}")
+        status_var.set("✓ Upload complete. You may close this window.")
         close_btn.config(state="normal")
 
     close_btn = tk.Button(root, text="Close", state="disabled",
