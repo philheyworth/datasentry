@@ -1023,7 +1023,7 @@ def run_wizard(prefill: dict) -> Optional[dict]:
         f = tk.Frame(root, bg=WHITE)
         header_band("Connect to DataSentry", "Where is your DataSentry server hosted?")
         url_var = field(f, "Server URL",
-                        placeholder="https://datasentry.up.railway.app",
+                        placeholder="https://app.datasentry.co.uk",
                         initial=prefill.get("api_url", ""))
         note(f, "This is the address of your DataSentry backend. "
                 "Your IT administrator or the person who set up DataSentry "
@@ -1034,7 +1034,7 @@ def run_wizard(prefill: dict) -> Optional[dict]:
 
         def next_step():
             url = url_var.get().strip()
-            if not url or url == "https://datasentry.up.railway.app":
+            if not url or url == "https://app.datasentry.co.uk":
                 err_var.set("Please enter your server URL.")
                 return
             if not url.startswith(("http://", "https://")):
