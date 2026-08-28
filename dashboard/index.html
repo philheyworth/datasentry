@@ -375,8 +375,8 @@ tr:hover td{background:var(--surface2);}
       <p>Enter your server address and login credentials.</p>
       <label class="login-label">Server URL</label>
       <input class="login-input url-input" id="ls-url" type="url"
-             value="https://web-production-96a95.up.railway.app"
-             placeholder="https://datasentry.up.railway.app">
+             value="https://app.datasentry.co.uk"
+             placeholder="https://app.datasentry.co.uk">
       <label class="login-label">Email</label>
       <input class="login-input" id="ls-email" type="email"
              placeholder="admin@datasentry.local" autocomplete="username">
@@ -1315,10 +1315,22 @@ function openDetail(machineId){
       <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--text3);margin-left:8px;">${m.customer_id}</span>
     </div>
     <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text2);margin-bottom:10px;">Storage Locations (${m.location_count})</div>
-    <div style="background:var(--surface2);padding:16px;border:1px solid var(--border2);text-align:center;color:var(--text2);font-size:13px;">
-      Location detail available when connected to live API.<br>
-      <span style="font-size:11.5px;color:var(--text3);">Machine ID: <code style="font-family:'JetBrains Mono',monospace;">${m.machine_id}</code></span>
-    </div>
+    ${(()=>{
+      const locs=(LIVE.machine_locations||[]).filter(l=>l.machine_id===m.machine_id);
+      if(!locs.length) return `<div style="background:var(--surface2);padding:16px;border:1px solid var(--border2);text-align:center;color:var(--text2);font-size:13px;">No location data found for this machine.</div>`;
+      return locs.map(l=>{
+        const color=LOC_COLORS[l.location_type]||"#6B7280";
+        const icon=locIcon(l.location_type);
+        const label=l.location_label||LOC_NAMES[l.location_type]||l.location_type;
+        return `<div class="dm-loc-row" style="margin-bottom:8px;">
+          <div class="dm-loc-icon" style="background:${color}22;">${icon}</div>
+          <div class="dm-loc-info">
+            <div class="dm-loc-name">${label}</div>
+            <div class="dm-loc-stats">${fmtNum(l.total_files)} files · ${fmtSize(l.total_bytes||0)} · ${l.pii_files>0?`<span style="color:var(--risk);">${fmtNum(l.pii_files)} PII files</span>`:"clean"}</div>
+          </div>
+        </div>`;
+      }).join("");
+    })()}
     <div style="margin-top:16px;font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--text3);">Last scanned: ${m.scanned_at.replace("T"," ").slice(0,19)} UTC</div>`;
   document.getElementById("detail-panel").classList.add("open");
   document.getElementById("overlay").classList.add("open");
@@ -1443,8 +1455,8 @@ function showUserBadge(){
 
 async function loadLiveData(){
   try{
-    const [custR,machR,sumR]=await Promise.all([
-      api("/api/customers"),api("/api/machines"),api("/api/summary")
+    const [custR,machR,sumR,invR]=await Promise.all([
+      api("/api/customers"),api("/api/machines"),api("/api/summary"),api("/api/inventory/summary")
     ]);
     if(!custR.ok||!machR.ok||!sumR.ok) throw new Error("API error");
     const customers=await custR.json();
@@ -1453,6 +1465,7 @@ async function loadLiveData(){
     LIVE.customers=customers;
     LIVE.machines=machines;
     LIVE.summary={...summary.totals,...summary,location_types:summary.location_types||[],pii_totals:summary.pii_totals||{}};
+    if(invR&&invR.ok){const inv=await invR.json();LIVE.machine_locations=inv.machine_locations||[];}else{LIVE.machine_locations=[];}
     LIVE.generated_at=new Date().toISOString();
     showUserBadge();
     // Show download card only for customer-scoped users (not global admin)
