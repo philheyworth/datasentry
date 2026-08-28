@@ -404,6 +404,21 @@ tr:hover td{background:var(--surface2);}
   <div class="detail-body" id="dp-body"></div>
 </div>
 
+<!-- PII FILES MODAL -->
+<div class="overlay" id="pii-overlay" onclick="closePiiModal()" style="z-index:299;display:none;"></div>
+<div id="pii-modal" style="display:none;position:fixed;top:0;right:0;bottom:0;width:620px;background:var(--surface);border-left:1px solid var(--border);z-index:300;flex-direction:column;overflow:hidden;">
+  <div style="padding:18px 24px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
+    <div>
+      <div style="font-size:16px;font-weight:700;font-family:'Syne',sans-serif;color:var(--risk);" id="pii-modal-title">PII Files</div>
+      <div style="font-size:12px;color:var(--text2);margin-top:3px;" id="pii-modal-sub"></div>
+    </div>
+    <button onclick="closePiiModal()" style="background:none;border:none;color:var(--text2);font-size:20px;cursor:pointer;padding:4px;line-height:1;flex-shrink:0;">✕</button>
+  </div>
+  <div style="flex:1;overflow-y:auto;padding:0 16px;" id="pii-modal-body">
+    <div style="text-align:center;color:var(--text3);padding:40px;">Loading…</div>
+  </div>
+</div>
+
 <!-- SIDEBAR -->
 <aside class="sidebar">
   <div class="sidebar-logo">
@@ -1128,19 +1143,28 @@ function openCustomerDetail(custId){
       <td><button class="btn-sm" onclick="openDetail('${m.machine_id}')">Detail ›</button></td>
     </tr>`).join("");
 
-  // Storage and PII bars for this customer (use fleet data as proxy)
-  const locs=LIVE.summary.location_types;
+  // Storage bars — use customer-specific machine_locations data
   const custMachineIds=new Set(machines.map(m=>m.machine_id));
-  const maxF=Math.max(...locs.map(l=>l.total_files));
-  document.getElementById("cust-loc-bars").innerHTML=locs.map(l=>`
+  const custMachineLocs=(LIVE.machine_locations||[]).filter(l=>custMachineIds.has(l.machine_id));
+  const locTypeMap={};
+  for(const l of custMachineLocs){
+    if(!locTypeMap[l.location_type]) locTypeMap[l.location_type]={location_type:l.location_type,total_files:0,total_bytes:0,pii_files:0};
+    locTypeMap[l.location_type].total_files+=l.total_files;
+    locTypeMap[l.location_type].total_bytes+=(l.total_bytes||0);
+    locTypeMap[l.location_type].pii_files+=(l.pii_files||0);
+  }
+  const custLocs=Object.values(locTypeMap).sort((a,b)=>b.total_files-a.total_files);
+  const maxF=Math.max(1,...custLocs.map(l=>l.total_files));
+  document.getElementById("cust-loc-bars").innerHTML=custLocs.length?custLocs.map(l=>`
     <div class="loc-row">
       <div class="loc-icon" style="background:${LOC_COLORS[l.location_type]}22;">${locIcon(l.location_type)}</div>
       <div style="flex:1;min-width:0;">
         <div class="loc-name">${LOC_NAMES[l.location_type]||l.location_type}</div>
+        ${l.pii_files>0?`<div style="font-size:10.5px;color:var(--risk);">${fmtNum(l.pii_files)} PII files</div>`:""}
       </div>
       <div class="loc-bar-wrap"><div class="loc-bar" style="width:${Math.round(l.total_files/maxF*100)}%;background:${LOC_COLORS[l.location_type]};"></div></div>
       <div class="loc-files">${fmtNum(l.total_files)}</div>
-    </div>`).join("");
+    </div>`).join(""):'<div style="color:var(--text3);font-size:13px;">No storage data yet.</div>';
 
   const pii=Object.entries(LIVE.summary.pii_totals).sort((a,b)=>b[1]-a[1]);
   const maxP=pii[0]?.[1]||1;
@@ -1340,6 +1364,64 @@ function closeDetail(){
   document.getElementById("overlay").classList.remove("open");
 }
 
+// ── PII FILE DRILL-DOWN ───────────────────────────────────
+async function openPiiModal(machineId, locationLabel, locationType, hostname){
+  const labelSafe = locationLabel || LOC_NAMES[locationType] || locationType;
+  document.getElementById("pii-modal-title").textContent = `⚠ PII Files — ${hostname}`;
+  document.getElementById("pii-modal-sub").textContent = `Location: ${labelSafe} · Loading…`;
+  document.getElementById("pii-modal-body").innerHTML = `<div style="text-align:center;color:var(--text3);padding:40px 20px;">Loading PII files…</div>`;
+  document.getElementById("pii-modal").style.display = "flex";
+  document.getElementById("pii-overlay").style.display = "block";
+  try {
+    const qs = new URLSearchParams({machine_id: machineId, pii_status: "findings", limit: "200"});
+    if(locationType) qs.append("location_type", locationType);
+    const r = await api(`/api/inventory?${qs}`);
+    if(!r.ok) throw new Error("API returned " + r.status);
+    const data = await r.json();
+    document.getElementById("pii-modal-sub").textContent = `${labelSafe} · ${data.total} file${data.total!==1?"s":""} with PII`;
+    renderPiiFiles(data);
+  } catch(e) {
+    document.getElementById("pii-modal-body").innerHTML = `<div style="color:var(--risk);padding:20px;">Failed to load: ${e.message}</div>`;
+  }
+}
+
+function closePiiModal(){
+  document.getElementById("pii-modal").style.display = "none";
+  document.getElementById("pii-overlay").style.display = "none";
+}
+
+function renderPiiFiles(data){
+  const items = data.items || [];
+  if(!items.length){
+    document.getElementById("pii-modal-body").innerHTML = `<div style="text-align:center;color:var(--text3);padding:40px;">No PII files found.</div>`;
+    return;
+  }
+  const rows = items.map(f => {
+    let findings = [];
+    try { findings = JSON.parse(f.pii_findings || "[]"); } catch(e){}
+    const badges = findings.slice(0, 6).map(pf =>
+      `<span style="background:var(--risk-bg);color:var(--risk);font-size:10px;font-weight:600;padding:2px 7px;border-radius:3px;white-space:nowrap;">${PII_LABELS[pf.type]||pf.type} ×${pf.count}</span>`
+    ).join(" ");
+    const ext = (f.file_name||"").split(".").pop().toLowerCase();
+    const icon = {pdf:"📄",docx:"📝",doc:"📝",xlsx:"📊",xls:"📊",csv:"📊",txt:"📃",eml:"📧",msg:"📧"}[ext] || "📄";
+    return `<div style="padding:14px 0;border-bottom:1px solid var(--border2);">
+      <div style="display:flex;align-items:flex-start;gap:10px;">
+        <div style="font-size:20px;flex-shrink:0;line-height:1;padding-top:2px;">${icon}</div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${f.file_path}">${f.file_name}</div>
+          <div style="font-size:10.5px;color:var(--text3);font-family:'JetBrains Mono',monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px;" title="${f.file_path}">${f.file_path}</div>
+          <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;">${badges}</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:5px;">${fmtSize(f.file_size)} · ${f.pii_count||0} PII hits · last seen ${(f.last_seen||"").slice(0,10)}</div>
+        </div>
+      </div>
+    </div>`;
+  }).join("");
+  const more = data.total > items.length
+    ? `<div style="text-align:center;color:var(--text3);font-size:12px;padding:16px 0;">Showing ${items.length} of ${data.total} files. Export for full list.</div>`
+    : "";
+  document.getElementById("pii-modal-body").innerHTML = rows + more;
+}
+
 // ── NAV ─────────────────────────────────────────────────
 function showSection(name,el){
   document.querySelectorAll(".section").forEach(s=>s.classList.remove("active"));
@@ -1471,9 +1553,12 @@ async function loadLiveData(){
     // Show download card only for customer-scoped users (not global admin)
     if(DS_USER&&DS_USER.customer_id){
       document.getElementById("cust-download-card").style.display="flex";
-      // Auto-navigate customer users to download page on first load
-      showSection('download-scanner', document.getElementById('nav-download-scanner'));
+      // Customer users stay on Dashboard overview — the API already scopes their data
     }
+    // Hide global-admin-only nav items for customer-scoped users
+    const isGlobalAdminUser = DS_USER && DS_USER.role==="admin" && !DS_USER.customer_id;
+    const addCustNav = document.getElementById("nav-add-customer");
+    if(addCustNav) addCustNav.style.display = isGlobalAdminUser ? "" : "none";
     initDashboard();
   }catch(e){
     console.error("loadLiveData failed",e);
@@ -1746,6 +1831,9 @@ function _renderDmMachines(inv){
       const scanBtn = (isCloud && pendCloud > 0)
         ? `<button class="btn-scan-pii" onclick="event.stopPropagation();triggerPiiScan('${m.machine_id}','${(l.location_label||l.location_type).replace(/'/g,"\\'")}','${l.location_type}','${label.replace(/'/g,"\\'")}',this)">Scan for PII</button>`
         : "";
+      const piiBtn = l.pii_files > 0
+        ? `<button class="btn-scan-pii" style="background:var(--risk-bg);color:var(--risk);border-color:var(--risk)55;margin-left:6px;" onclick="event.stopPropagation();openPiiModal('${m.machine_id}','${label.replace(/'/g,"\\'").replace(/\\/g,"\\\\")}','${l.location_type}','${m.hostname.replace(/'/g,"\\'")}')">View ${fmtNum(l.pii_files)} PII Files</button>`
+        : "";
       return `<div class="dm-loc-row">
         <div class="dm-loc-icon" style="background:${color}22;">${icon}</div>
         <div class="dm-loc-info">
@@ -1753,7 +1841,7 @@ function _renderDmMachines(inv){
           <div class="dm-loc-stats">${fmtNum(l.total_files)} files · ${fmtSize(l.total_bytes||0)} · ${l.total_pii_hits>0?`<span style="color:var(--risk);">${fmtNum(l.total_pii_hits)} PII hits</span>`:"clean"}</div>
           <div style="margin-top:5px;">${badges}</div>
         </div>
-        ${scanBtn}
+        <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;">${scanBtn}${piiBtn}</div>
       </div>`;
     }).join("");
 
