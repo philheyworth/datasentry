@@ -1072,7 +1072,9 @@ function renderOverview(){
       <div class="stat-delta">local &amp; network drive sources</div>
     </div>`;
   document.getElementById("last-scan-lbl").textContent=`Last updated: ${LIVE.generated_at.replace("T"," ").replace("Z"," UTC")}`;
-  document.getElementById("pii-badge").textContent=fmtNum(s.total_pii_files);
+  const piiBadge=document.getElementById("pii-badge");
+  if(s.total_pii_files>0){piiBadge.textContent=fmtNum(s.total_pii_files);piiBadge.style.display="";}
+  else{piiBadge.style.display="none";}
 
   // Location bars
   const locs=LIVE.summary.location_types;
@@ -1331,22 +1333,29 @@ function renderLocations(){
 function renderCompliance(){
   const totalMachines=LIVE.machines.length;
   const piiMachines=LIVE.machines.filter(m=>m.total_pii_files>0).length;
-  const hasNetwork=LIVE.summary.location_types.some(l=>l.location_type==="network_drive");
+  const locTypes=LIVE.summary.location_types||[];
+  const hasNetwork=locTypes.some(l=>l.location_type==="network_drive");
+  const hasCloud=locTypes.some(l=>["dropbox","onedrive","google_drive","sharepoint"].includes(l.location_type));
+  const totalPiiFiles=LIVE.summary.totals.total_pii_files||0;
+  // Items derived from real scan data use actual values;
+  // items requiring manual configuration default to 0 until machines exist,
+  // then retain their placeholder values to signal "needs review".
+  const scanned=totalMachines>0;
   const gdpr=[
-    {label:"Data inventory complete",pct:100},
-    {label:"PII identified and catalogued",pct:100},
-    {label:"Data minimised — not in local drafts",pct:38},
-    {label:"Network drives encrypted at rest",pct:hasNetwork?0:100},
-    {label:"Cloud storage under DPA",pct:72},
-    {label:"Retention policies enforced",pct:25},
+    {label:"Data inventory complete",            pct:scanned?100:0},
+    {label:"PII identified and catalogued",       pct:scanned?100:0},
+    {label:"Data minimised — not in local drafts",pct:scanned?Math.max(0,100-Math.round(piiMachines/Math.max(totalMachines,1)*100)):0},
+    {label:"Network drives encrypted at rest",    pct:scanned?(hasNetwork?0:100):0},
+    {label:"Cloud storage under DPA",             pct:scanned?(hasCloud?72:100):0},
+    {label:"Retention policies enforced",         pct:scanned?25:0},
   ];
   const dlp=[
-    {label:"Credit card data scanned",pct:100},
-    {label:"NI numbers detected",pct:100},
-    {label:"Email addresses logged",pct:100},
-    {label:"High-risk files quarantined",pct:0},
-    {label:"DLP policies on SharePoint / OneDrive",pct:55},
-    {label:"Shadow IT (Dropbox, Google Drive) blocked",pct:15},
+    {label:"Credit card data scanned",                pct:scanned?100:0},
+    {label:"NI numbers detected",                     pct:scanned?100:0},
+    {label:"Email addresses logged",                  pct:scanned?100:0},
+    {label:"High-risk files quarantined",             pct:scanned?(totalPiiFiles>0?0:100):0},
+    {label:"DLP policies on SharePoint / OneDrive",   pct:scanned?(hasCloud?55:100):0},
+    {label:"Shadow IT (Dropbox, Google Drive) blocked",pct:scanned?15:0},
   ];
   const pctColor=p=>p>=80?"var(--ok)":p>=50?"var(--warn)":"var(--risk)";
   const bar=checks=>checks.map(c=>`
