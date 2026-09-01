@@ -1117,7 +1117,7 @@ function renderOverview(){
       <td class="num">${fmtSize(c.total_size_bytes)}</td>
       <td class="num" style="color:${c.total_pii_files>0?"var(--risk)":"var(--ok)"};">${fmtNum(c.total_pii_files)}</td>
       <td>${riskChip({total_pii_files:c.total_pii_files})}</td>
-      <td class="last-scan">${c.last_scanned_at.slice(0,10)}</td>
+      <td class="last-scan">${c.last_scanned_at?c.last_scanned_at.slice(0,10):'—'}</td>
       <td><button class="btn-sm" onclick="event.stopPropagation();openCustomerDetail('${c.customer_id}')">View ›</button></td>
     </tr>`).join("");
 }
@@ -1174,7 +1174,7 @@ function openCustomerDetail(custId){
   document.getElementById("cust-detail-chip").innerHTML=
     `<span class="customer-badge" style="background:${custColor(custId)}22;color:${custColor(custId)};font-size:11px;font-weight:600;padding:2px 8px;border-radius:4px;font-family:'JetBrains Mono',monospace;">${custId}</span>`;
   document.getElementById("cust-detail-sub").innerHTML=
-    `${c.machine_count} machines · ${fmtNum(c.total_files)} files · ${fmtSize(c.total_size_bytes)} · last scanned ${c.last_scanned_at.slice(0,10)}`;
+    `${c.machine_count} machines · ${fmtNum(c.total_files)} files · ${fmtSize(c.total_size_bytes)}${c.last_scanned_at?' · last scanned '+c.last_scanned_at.slice(0,10):' · no scans yet'}`;
 
   document.getElementById("cust-stats").innerHTML=`
     <div class="stat-card stat-accent">
