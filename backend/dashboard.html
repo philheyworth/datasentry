@@ -1481,7 +1481,11 @@ function renderPiiFiles(data){
   }
   const rows = items.map(f => {
     let findings = [];
-    try { findings = JSON.parse(f.pii_findings || "[]"); } catch(e){}
+    try {
+      const raw = JSON.parse(f.pii_findings || "{}");
+      if(Array.isArray(raw)) findings = raw;
+      else findings = Object.entries(raw).map(([type,count])=>({type,count}));
+    } catch(e){}
     const badges = findings.slice(0, 6).map(pf =>
       `<span style="background:var(--risk-bg);color:var(--risk);font-size:10px;font-weight:600;padding:2px 7px;border-radius:3px;white-space:nowrap;">${PII_LABELS[pf.type]||pf.type} ×${pf.count}</span>`
     ).join(" ");
