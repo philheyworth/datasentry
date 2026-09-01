@@ -170,16 +170,39 @@ def get_windows_locations() -> list[dict]:
         locations.append({"label": "OneDrive Personal", "path": str(onedrive_personal), "type": "onedrive"})
 
     # OneDrive for Business / SharePoint (multiple tenants)
-    for p in home.glob("OneDrive - *"):
-        if p.is_dir():
-            tenant = p.name.replace("OneDrive - ", "")
-            locations.append({
-                "label": f"OneDrive for Business ({tenant})",
-                "path": str(p),
-                "type": "onedrive_business"
-            })
+    # Search both the current home AND every other user profile on the machine,
+    # because the scanner may run as SYSTEM or Administrator while the signed-in
+    # OneDrive account belongs to a different Windows user profile.
+    _od_seen: set[str] = set()
+    _search_roots: list[Path] = [home]
+    try:
+        users_dir = Path(os.environ.get("SystemDrive", "C:") + "\\Users")
+        if users_dir.exists():
+            _search_roots += [p for p in users_dir.iterdir()
+                              if p.is_dir() and p.name not in ("Public", "Default", "Default User",
+                                                                "All Users", "desktop.ini")]
+    except Exception:
+        pass
+    for _root in _search_roots:
+        for p in _root.glob("OneDrive - *"):
+            if p.is_dir() and str(p) not in _od_seen:
+                _od_seen.add(str(p))
+                tenant = p.name.replace("OneDrive - ", "")
+                locations.append({
+                    "label": f"OneDrive for Business ({tenant})",
+                    "path": str(p),
+                    "type": "onedrive_business"
+                })
+        # Also catch OneDrive Personal under other user profiles
+        od_personal = _root / "OneDrive"
+        if od_personal.exists() and od_personal.is_dir() and str(od_personal) not in _od_seen:
+            _od_seen.add(str(od_personal))
+            if _root != home:  # already added above for home user
+                locations.append({"label": "OneDrive Personal",
+                                  "path": str(od_personal), "type": "onedrive"})
 
-    # Dropbox — read config file for actual path
+    # Dropbox — read config file for actual path (most reliable)
+    dropbox_found: set[str] = set()
     dropbox_info = Path(os.environ.get("APPDATA", "")) / "Dropbox" / "info.json"
     if dropbox_info.exists():
         try:
@@ -189,6 +212,7 @@ def get_windows_locations() -> list[dict]:
                 if account_type in db_config:
                     db_path = Path(db_config[account_type]["path"])
                     if db_path.exists():
+                        dropbox_found.add(str(db_path))
                         locations.append({
                             "label": f"Dropbox ({account_type.capitalize()})",
                             "path": str(db_path),
@@ -196,11 +220,37 @@ def get_windows_locations() -> list[dict]:
                         })
         except Exception:
             pass
-    else:
-        # Fallback: common Dropbox paths
-        for fallback in [home / "Dropbox", home / "Dropbox (Personal)", home / "Dropbox (Business)"]:
-            if fallback.exists():
-                locations.append({"label": f"Dropbox ({fallback.name})", "path": str(fallback), "type": "dropbox"})
+
+    # Dropbox — Windows registry fallback (catches Dropbox Business installs)
+    if not dropbox_found:
+        try:
+            import winreg
+            for reg_root in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+                for reg_path in (r"SOFTWARE\Dropbox", r"SOFTWARE\WOW6432Node\Dropbox"):
+                    try:
+                        key = winreg.OpenKey(reg_root, reg_path)
+                        db_path_str = winreg.QueryValueEx(key, "InstallPath")[0]
+                        winreg.CloseKey(key)
+                        # InstallPath is the app install dir; actual data is usually one level up
+                        # Try common subdirs
+                        for candidate in [Path(db_path_str).parent / "Dropbox",
+                                          Path(db_path_str) / "Dropbox"]:
+                            if candidate.exists() and str(candidate) not in dropbox_found:
+                                dropbox_found.add(str(candidate))
+                                locations.append({"label": f"Dropbox ({candidate.name})",
+                                                  "path": str(candidate), "type": "dropbox"})
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+    # Dropbox — glob fallback: catch any ~/Dropbox* folder (handles all naming variants)
+    if not dropbox_found:
+        for fallback in home.glob("Dropbox*"):
+            if fallback.is_dir() and str(fallback) not in dropbox_found:
+                dropbox_found.add(str(fallback))
+                locations.append({"label": f"Dropbox ({fallback.name})",
+                                  "path": str(fallback), "type": "dropbox"})
 
     # Google Drive — registry or common path
     try:
