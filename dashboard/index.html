@@ -429,14 +429,14 @@ tr:hover td{background:var(--surface2);}
   <div class="nav-item active" onclick="showSection('overview',this)">
     <span class="nav-icon">⬡</span> Dashboard
   </div>
-  <div class="nav-section">Customers</div>
-  <div class="nav-item" onclick="showSection('customers',this)">
-    <span class="nav-icon">◈</span> All Customers
+  <div class="nav-section" id="nav-section-customers">Customers</div>
+  <div class="nav-item" id="nav-all-customers" onclick="showSection('customers',this)">
+    <span class="nav-icon">◈</span> <span id="nav-all-customers-label">All Customers</span>
   </div>
   <div id="customer-nav-items"></div>
-  <div class="nav-section">Fleet</div>
-  <div class="nav-item" onclick="showSection('machines',this)">
-    <span class="nav-icon">▣</span> All Machines
+  <div class="nav-section" id="nav-section-fleet">Fleet</div>
+  <div class="nav-item" id="nav-all-machines" onclick="showSection('machines',this)">
+    <span class="nav-icon">▣</span> <span id="nav-machines-label">All Machines</span>
   </div>
   <div class="nav-item" onclick="showSection('pii',this)">
     <span class="nav-icon">⚠</span> PII Findings
@@ -527,7 +527,7 @@ tr:hover td{background:var(--surface2);}
     <!-- CUSTOMER DETAIL (dynamic) -->
     <section class="section" id="section-customer-detail">
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px;">
-        <button class="btn-sm" onclick="showSection('customers',document.querySelector('.nav-item[onclick*=customers]'))">← Customers</button>
+        <button class="btn-sm" id="cust-back-btn" onclick="showSection('customers',document.getElementById('nav-all-customers'))">← Customers</button>
         <div class="page-heading" id="cust-detail-name" style="margin-bottom:0;">—</div>
         <div id="cust-detail-chip" style="margin-left:4px;"></div>
       </div>
@@ -993,6 +993,7 @@ function updateScopedSubtitles(){
   const isCustomer=DS_USER&&DS_USER.customer_id;
   const companyName=DS_USER&&DS_USER.customer_name?DS_USER.customer_name:"your company";
   if(isCustomer){
+    // Page subtitles
     const subM=document.getElementById("sub-machines");
     if(subM)subM.textContent=`Every device that has submitted a scan for ${companyName}.`;
     const subL=document.getElementById("sub-locations");
@@ -1001,9 +1002,27 @@ function updateScopedSubtitles(){
     if(subC)subC.textContent=`GDPR readiness and DLP coverage for ${companyName}.`;
     const locTitle=document.getElementById("loc-card-title");
     if(locTitle)locTitle.textContent=`Location Types — ${companyName}`;
-    // Hide nav items not relevant to customer users
-    // (customers don't need Add Customer or API Config nav)
+    // Hide the back-to-customers button (customer users have no customers list)
+    const backBtn=document.getElementById("cust-back-btn");
+    if(backBtn)backBtn.style.display="none";
+    // Nav: replace "All Customers" with company name, link direct to their detail
+    const navSec=document.getElementById("nav-section-customers");
+    if(navSec)navSec.textContent="My Company";
+    const navLbl=document.getElementById("nav-all-customers-label");
+    if(navLbl)navLbl.textContent=companyName;
+    const navBtn=document.getElementById("nav-all-customers");
+    if(navBtn)navBtn.onclick=()=>openCustomerDetail(DS_USER.customer_id);
+    // Hide the sub-list of customers (only one, now accessible via the top item)
+    const subItems=document.getElementById("customer-nav-items");
+    if(subItems)subItems.style.display="none";
+    // Relabel "All Machines" → "Machines"
+    const machLbl=document.getElementById("nav-machines-label");
+    if(machLbl)machLbl.textContent="Machines";
+    // Relabel fleet section
+    const fleetSec=document.getElementById("nav-section-fleet");
+    if(fleetSec)fleetSec.textContent="Fleet";
   }else{
+    // Restore admin defaults
     const subM=document.getElementById("sub-machines");
     if(subM)subM.textContent="Every device that has submitted a scan, across all customers.";
     const subL=document.getElementById("sub-locations");
@@ -1012,6 +1031,18 @@ function updateScopedSubtitles(){
     if(subC)subC.textContent="GDPR readiness and DLP coverage across all customers.";
     const locTitle=document.getElementById("loc-card-title");
     if(locTitle)locTitle.textContent="Location Types — Fleet Wide";
+    const backBtn=document.getElementById("cust-back-btn");
+    if(backBtn)backBtn.style.display="";
+    const navSec=document.getElementById("nav-section-customers");
+    if(navSec)navSec.textContent="Customers";
+    const navLbl=document.getElementById("nav-all-customers-label");
+    if(navLbl)navLbl.textContent="All Customers";
+    const navBtn=document.getElementById("nav-all-customers");
+    if(navBtn)navBtn.onclick=function(){showSection('customers',this);};
+    const subItems=document.getElementById("customer-nav-items");
+    if(subItems)subItems.style.display="";
+    const machLbl=document.getElementById("nav-machines-label");
+    if(machLbl)machLbl.textContent="All Machines";
   }
 }
 
@@ -1596,7 +1627,6 @@ async function loadLiveData(){
     // Show download card only for customer-scoped users (not global admin)
     if(DS_USER&&DS_USER.customer_id){
       document.getElementById("cust-download-card").style.display="flex";
-      // Customer users stay on Dashboard overview — the API already scopes their data
     }
     // Hide global-admin-only nav items for customer-scoped users
     const isGlobalAdminUser = DS_USER && DS_USER.role==="admin" && !DS_USER.customer_id;
@@ -2008,6 +2038,10 @@ function initDashboard(){
   updateScopedSubtitles();
   renderOverview();renderCustomers();renderMachines();
   renderPii();renderLocations();renderCompliance();
+  // Customer users: auto-open their company detail on first load
+  if(DS_USER&&DS_USER.customer_id&&LIVE.customers.length){
+    openCustomerDetail(DS_USER.customer_id);
+  }
 }
 
 // Restore session from localStorage, or show login
