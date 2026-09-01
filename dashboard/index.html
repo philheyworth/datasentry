@@ -556,7 +556,7 @@ tr:hover td{background:var(--surface2);}
           <div class="card-body" id="cust-loc-bars"></div>
         </div>
         <div class="card">
-          <div class="card-header"><span class="card-title">PII Exposure</span></div>
+          <div class="card-header"><span class="card-title">PII Pattern Hits</span><span class="card-meta" id="cust-pii-meta" title="Occurrence count — how many times each pattern was matched across all files. One file with 1,000 rows each containing a phone number = 1,000 hits.">? occurrence counts</span></div>
           <div class="card-body" id="cust-pii-bars"></div>
         </div>
       </div>
@@ -970,6 +970,13 @@ function fmtSize(b){if(!b)return"0 B";const u=["B","KB","MB","GB","TB"];
   const i=Math.min(Math.floor(Math.log(b)/Math.log(1024)),4);
   return(b/Math.pow(1024,i)).toFixed(1)+" "+u[i];}
 function fmtNum(n){return(n||0).toLocaleString();}
+function fmtHits(n){
+  n=n||0;
+  if(n>=1e9) return (n/1e9).toFixed(1).replace(/\.0$/,"")+"B";
+  if(n>=1e6) return (n/1e6).toFixed(1).replace(/\.0$/,"")+"M";
+  if(n>=1e3) return (n/1e3).toFixed(1).replace(/\.0$/,"")+"K";
+  return n.toLocaleString();
+}
 function riskLevel(m){if(m.total_pii_files>1000)return"high";
   if(m.total_pii_files>200)return"medium";
   if(m.total_pii_files>0)return"low";return"none";}
@@ -1166,18 +1173,27 @@ function openCustomerDetail(custId){
       <div class="loc-files">${fmtNum(l.total_files)}</div>
     </div>`).join(""):'<div style="color:var(--text3);font-size:13px;">No storage data yet.</div>';
 
-  const pii=Object.entries(LIVE.summary.pii_totals).sort((a,b)=>b[1]-a[1]);
-  const maxP=pii[0]?.[1]||1;
-  document.getElementById("cust-pii-bars").innerHTML=pii.map(([k,v],i)=>`
-    <div class="compliance-item">
-      <div class="compliance-header">
-        <span class="compliance-label">${PII_LABELS[k]||k}</span>
-        <span class="compliance-pct">${fmtNum(v)}</span>
-      </div>
-      <div class="progress-track"><div class="progress-fill" style="width:${Math.round(v/maxP*100)}%;background:${PII_COLORS[i%PII_COLORS.length]};"></div></div>
-    </div>`).join("");
-
+  document.getElementById("cust-pii-bars").innerHTML='<div style="color:var(--text3);font-size:12px;">Loading…</div>';
   showSection("customer-detail",null);
+
+  // Fetch customer-specific PII hit totals asynchronously
+  api(`/api/summary?customer_id=${encodeURIComponent(custId)}`).then(r=>r.ok?r.json():null).then(s=>{
+    const totals = (s&&s.pii_totals)||{};
+    const total = Object.values(totals).reduce((a,b)=>a+b,0);
+    document.getElementById("cust-pii-meta").textContent = `${fmtHits(total)} total hits · each = one pattern match in a file`;
+    const pii=Object.entries(totals).sort((a,b)=>b[1]-a[1]);
+    const maxP=pii[0]?.[1]||1;
+    document.getElementById("cust-pii-bars").innerHTML=pii.length?pii.map(([k,v],i)=>`
+      <div class="compliance-item">
+        <div class="compliance-header">
+          <span class="compliance-label">${PII_LABELS[k]||k}</span>
+          <span class="compliance-pct" title="${fmtNum(v)} occurrences">${fmtHits(v)} hits</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" style="width:${Math.round(v/maxP*100)}%;background:${PII_COLORS[i%PII_COLORS.length]};"></div></div>
+      </div>`).join(""):'<div style="color:var(--text3);font-size:13px;">No PII data yet.</div>';
+  }).catch(()=>{
+    document.getElementById("cust-pii-bars").innerHTML='<div style="color:var(--text3);font-size:13px;">Could not load PII data.</div>';
+  });
 }
 
 // ── RENDER MACHINES ──────────────────────────────────────
@@ -1218,9 +1234,9 @@ function renderPii(){
     <div class="stat-card stat-risk"><div class="stat-label">PII Files</div>
       <div class="stat-value">${fmtNum(s.totals.total_pii_files)}</div>
       <div class="stat-delta">requiring review</div></div>
-    <div class="stat-card"><div class="stat-label">PII Instances</div>
-      <div class="stat-value">${fmtNum(piuTotal)}</div>
-      <div class="stat-delta">individual data points</div></div>
+    <div class="stat-card"><div class="stat-label">PII Pattern Hits</div>
+      <div class="stat-value">${fmtHits(piuTotal)}</div>
+      <div class="stat-delta">occurrence count across all files</div></div>
     <div class="stat-card stat-warn"><div class="stat-label">Highest Risk Type</div>
       <div class="stat-value" style="font-size:15px;">${PII_LABELS[pii[0]?.[0]]||"—"}</div></div>
     <div class="stat-card"><div class="stat-label">Machines Affected</div>
@@ -1231,7 +1247,7 @@ function renderPii(){
     <div class="compliance-item">
       <div class="compliance-header">
         <span class="compliance-label">${PII_LABELS[k]||k}</span>
-        <span class="compliance-pct">${fmtNum(v)} instances</span>
+        <span class="compliance-pct" title="${fmtNum(v)} occurrences">${fmtHits(v)} hits</span>
       </div>
       <div class="progress-track"><div class="progress-fill" style="width:${Math.round(v/maxP*100)}%;background:${PII_COLORS[i%PII_COLORS.length]};"></div></div>
     </div>`).join("");
