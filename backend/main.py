@@ -625,22 +625,39 @@ async def receive_scan(request: Request,
 @app.get("/api/customers")
 def list_customers(payload: dict = Depends(require_user), db: _PgConn = Depends(get_db)):
     cust_filter = _customer_filter(payload)
-    where  = "WHERE s.customer_id = %s" if cust_filter else ""
-    params = (cust_filter,) if cust_filter else ()
+    # Always source customers from the users table so customers with no
+    # scans yet still appear in the list.  Scan stats are LEFT JOINed in.
+    cust_where  = "AND u.customer_id = %s" if cust_filter else ""
+    params      = (cust_filter,) if cust_filter else ()
     rows = db.execute(f"""
-        SELECT s.customer_id, s.customer_name,
-               COUNT(DISTINCT s.machine_id)  AS machine_count,
-               SUM(s.total_files)            AS total_files,
-               SUM(s.total_size_bytes)       AS total_size_bytes,
-               SUM(s.total_pii_files)        AS total_pii_files,
-               MAX(s.scanned_at)             AS last_scanned_at
-        FROM scans s
-        INNER JOIN (
-            SELECT machine_id, MAX(received_at) AS latest FROM scans GROUP BY machine_id
-        ) l ON s.machine_id = l.machine_id AND s.received_at = l.latest
-        {where}
-        GROUP BY s.customer_id, s.customer_name
-        ORDER BY machine_count DESC
+        SELECT u.customer_id,
+               u.customer_name,
+               COALESCE(agg.machine_count,   0) AS machine_count,
+               COALESCE(agg.total_files,      0) AS total_files,
+               COALESCE(agg.total_size_bytes, 0) AS total_size_bytes,
+               COALESCE(agg.total_pii_files,  0) AS total_pii_files,
+               agg.last_scanned_at
+        FROM (
+            SELECT DISTINCT ON (customer_id) customer_id, customer_name
+            FROM users
+            WHERE customer_id IS NOT NULL AND customer_id <> ''
+            {cust_where}
+        ) u
+        LEFT JOIN (
+            SELECT s.customer_id,
+                   COUNT(DISTINCT s.machine_id) AS machine_count,
+                   SUM(s.total_files)            AS total_files,
+                   SUM(s.total_size_bytes)       AS total_size_bytes,
+                   SUM(s.total_pii_files)        AS total_pii_files,
+                   MAX(s.scanned_at)             AS last_scanned_at
+            FROM scans s
+            INNER JOIN (
+                SELECT machine_id, MAX(received_at) AS latest
+                FROM scans GROUP BY machine_id
+            ) l ON s.machine_id = l.machine_id AND s.received_at = l.latest
+            GROUP BY s.customer_id
+        ) agg ON u.customer_id = agg.customer_id
+        ORDER BY machine_count DESC, u.customer_name ASC
     """, params).fetchall()
     return [dict(r) for r in rows]
 
