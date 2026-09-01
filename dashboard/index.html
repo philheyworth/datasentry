@@ -565,7 +565,7 @@ tr:hover td{background:var(--surface2);}
     <!-- ALL MACHINES -->
     <section class="section" id="section-machines">
       <div class="page-heading">All Machines</div>
-      <div class="page-sub">Every device that has submitted a scan, across all customers.</div>
+      <div class="page-sub" id="sub-machines">Every device that has submitted a scan, across all customers.</div>
       <div class="filter-bar" id="machine-filters"></div>
       <div class="card">
         <div class="table-wrap">
@@ -591,10 +591,10 @@ tr:hover td{background:var(--surface2);}
     <!-- STORAGE MAP -->
     <section class="section" id="section-locations">
       <div class="page-heading">Storage Map</div>
-      <div class="page-sub">Where data actually lives across your entire customer base.</div>
+      <div class="page-sub" id="sub-locations">Where data actually lives across your entire customer base.</div>
       <div class="filter-bar" id="loc-filters"></div>
       <div class="card">
-        <div class="card-header"><span class="card-title">Location Types — Fleet Wide</span></div>
+        <div class="card-header"><span class="card-title" id="loc-card-title">Location Types — Fleet Wide</span></div>
         <div class="card-body" id="loc-detail-body"></div>
       </div>
     </section>
@@ -659,7 +659,7 @@ tr:hover td{background:var(--surface2);}
     <!-- COMPLIANCE -->
     <section class="section" id="section-compliance">
       <div class="page-heading">Compliance Status</div>
-      <div class="page-sub">GDPR readiness and DLP coverage across all customers.</div>
+      <div class="page-sub" id="sub-compliance">GDPR readiness and DLP coverage across all customers.</div>
       <div class="two-col">
         <div class="card">
           <div class="card-header"><span class="card-title">GDPR Readiness</span></div>
@@ -987,6 +987,33 @@ function locIcon(t){return{local:"🗂",onedrive:"☁",onedrive_business:"☁",d
   google_drive:"📁",icloud:"☁",network_drive:"🗄",box:"📦",cloud_sync:"☁"}[t]||"📁";}
 function custColor(id){return CUST_COLORS[id]||"#6B7280";}
 function custInitials(name){return name.split(" ").map(w=>w[0]).join("").slice(0,2);}
+
+// ── SCOPE SUBTITLES ──────────────────────────────────────
+function updateScopedSubtitles(){
+  const isCustomer=DS_USER&&DS_USER.customer_id;
+  const companyName=DS_USER&&DS_USER.customer_name?DS_USER.customer_name:"your company";
+  if(isCustomer){
+    const subM=document.getElementById("sub-machines");
+    if(subM)subM.textContent=`Every device that has submitted a scan for ${companyName}.`;
+    const subL=document.getElementById("sub-locations");
+    if(subL)subL.textContent=`Where your data actually lives across all ${companyName} machines.`;
+    const subC=document.getElementById("sub-compliance");
+    if(subC)subC.textContent=`GDPR readiness and DLP coverage for ${companyName}.`;
+    const locTitle=document.getElementById("loc-card-title");
+    if(locTitle)locTitle.textContent=`Location Types — ${companyName}`;
+    // Hide nav items not relevant to customer users
+    // (customers don't need Add Customer or API Config nav)
+  }else{
+    const subM=document.getElementById("sub-machines");
+    if(subM)subM.textContent="Every device that has submitted a scan, across all customers.";
+    const subL=document.getElementById("sub-locations");
+    if(subL)subL.textContent="Where data actually lives across your entire customer base.";
+    const subC=document.getElementById("sub-compliance");
+    if(subC)subC.textContent="GDPR readiness and DLP coverage across all customers.";
+    const locTitle=document.getElementById("loc-card-title");
+    if(locTitle)locTitle.textContent="Location Types — Fleet Wide";
+  }
+}
 
 // ── RENDER OVERVIEW ──────────────────────────────────────
 function renderOverview(){
@@ -1978,6 +2005,7 @@ function initDashboard(){
   const topSub=document.getElementById("topbar-sub");
   if(topSub&&topSub.textContent===""||topSub?.textContent===""){
     topSub.textContent=custCount||machCount?`— ${custCount} customer${custCount!==1?"s":""}, ${machCount} machine${machCount!==1?"s":""}`:"";}
+  updateScopedSubtitles();
   renderOverview();renderCustomers();renderMachines();
   renderPii();renderLocations();renderCompliance();
 }
