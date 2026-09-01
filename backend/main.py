@@ -721,7 +721,8 @@ def global_summary(customer_id: Optional[str] = None, payload: dict = Depends(re
         ) sub
     """, params).fetchone()
 
-    loc_types = db.execute("""
+    cust_where = "WHERE s.customer_id = %s" if effective else ""
+    loc_types = db.execute(f"""
         SELECT sl.location_type,
                COUNT(DISTINCT sl.machine_id) AS machine_count,
                SUM(sl.total_files)           AS total_files,
@@ -733,18 +734,20 @@ def global_summary(customer_id: Optional[str] = None, payload: dict = Depends(re
         ) l ON sl.machine_id = l.machine_id
         INNER JOIN scans s ON s.machine_id = l.machine_id AND s.received_at = l.latest
                           AND sl.scan_id = s.id
+        {cust_where}
         GROUP BY sl.location_type
         ORDER BY total_files DESC
-    """).fetchall()
+    """, params).fetchall()
 
-    pii_rows = db.execute("""
+    pii_rows = db.execute(f"""
         SELECT pii_summary FROM scan_locations sl
         INNER JOIN (
             SELECT machine_id, MAX(received_at) AS latest FROM scans GROUP BY machine_id
         ) l ON sl.machine_id = l.machine_id
         INNER JOIN scans s ON s.machine_id = l.machine_id AND s.received_at = l.latest
                           AND sl.scan_id = s.id
-    """).fetchall()
+        {cust_where}
+    """, params).fetchall()
     pii_totals: dict = {}
     for row in pii_rows:
         try:
