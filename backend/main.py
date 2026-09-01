@@ -324,6 +324,19 @@ def init_db():
         raw.commit()
         print("  Admin password synced from DATASENTRY_ADMIN_PASSWORD env var.")
 
+    # ── Migration: fix customer users who were wrongly given role='admin' ─────
+    # Any user with a non-empty customer_id and role='admin' is a customer portal
+    # user, not the DataSentry super-admin.  Correct their role to 'customer'.
+    cur.execute(
+        "UPDATE users SET role = 'customer' "
+        "WHERE role = 'admin' AND customer_id IS NOT NULL AND customer_id <> '' "
+        "AND email <> 'admin@datasentry.local'"
+    )
+    fixed = cur.rowcount
+    if fixed:
+        raw.commit()
+        print(f"  Migrated {fixed} customer user(s) from role=admin → role=customer.")
+
     cur.close()
     raw.close()
 
@@ -388,12 +401,18 @@ def require_api_key(x_api_key: str = Header(...), db: _PgConn = Depends(get_db))
 
 
 def _customer_filter(payload: Optional[dict]) -> Optional[str]:
-    """Return customer_id to filter by, or None if global admin (sees all)."""
+    """Return customer_id to filter by, or None only for the global DataSentry admin.
+
+    Empty-string customer_id is normalised to None so it never silently bypasses filters.
+    Customer portal users have role='customer', OR role='admin' WITH a real customer_id.
+    """
     if not payload:
         return None
-    if payload.get("role") == "admin" and payload.get("customer_id") is None:
-        return None
-    return payload.get("customer_id")
+    cust_id = (payload.get("customer_id") or "").strip() or None   # "" -> None
+    role    = payload.get("role") or ""
+    if role == "admin" and cust_id is None:
+        return None   # true global DataSentry admin — no filter applied
+    return cust_id    # customer-scoped (may be None if user is misconfigured)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -651,9 +670,9 @@ def list_customer_machines(customer_id: str, payload: dict = Depends(require_use
 def list_machines(customer_id: Optional[str] = None, payload: dict = Depends(require_user),
                   db: _PgConn = Depends(get_db)):
     cust_filter = _customer_filter(payload)
-    effective   = cust_filter or customer_id
-    where  = "WHERE s.customer_id = %s" if effective else ""
-    params = (effective,) if effective else ()
+    effective   = cust_filter if cust_filter is not None else customer_id
+    where  = "WHERE s.customer_id = %s" if effective is not None else ""
+    params = (effective,) if effective is not None else ()
     rows = db.execute(f"""
         SELECT s.machine_id, s.hostname, s.username, s.os,
                s.customer_id, s.customer_name,
@@ -702,9 +721,9 @@ def get_machine_history(machine_id: str, payload: dict = Depends(require_user),
 def global_summary(customer_id: Optional[str] = None, payload: dict = Depends(require_user),
                    db: _PgConn = Depends(get_db)):
     cust_filter = _customer_filter(payload)
-    effective   = cust_filter or customer_id
-    where  = "WHERE s.customer_id = %s" if effective else ""
-    params = (effective,) if effective else ()
+    effective   = cust_filter if cust_filter is not None else customer_id
+    where  = "WHERE s.customer_id = %s" if effective is not None else ""
+    params = (effective,) if effective is not None else ()
 
     totals = db.execute(f"""
         SELECT COUNT(DISTINCT machine_id) AS total_machines,
@@ -721,7 +740,7 @@ def global_summary(customer_id: Optional[str] = None, payload: dict = Depends(re
         ) sub
     """, params).fetchone()
 
-    cust_where = "WHERE s.customer_id = %s" if effective else ""
+    cust_where = "WHERE s.customer_id = %s" if effective is not None else ""
     loc_types = db.execute(f"""
         SELECT sl.location_type,
                COUNT(DISTINCT sl.machine_id) AS machine_count,
@@ -803,7 +822,7 @@ def create_customer(body: NewCustomerRequest, payload: dict = Depends(require_ad
     try:
         db.execute(
             "INSERT INTO users (email, name, password_hash, customer_id, customer_name, role) "
-            "VALUES (%s, %s, %s, %s, %s, 'admin')",
+            "VALUES (%s, %s, %s, %s, %s, 'customer')",
             (body.admin_email, body.admin_name, pw_hash, body.customer_id, body.customer_name)
         )
     except psycopg2.IntegrityError:
