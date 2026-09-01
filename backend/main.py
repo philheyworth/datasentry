@@ -642,6 +642,7 @@ def list_customers(payload: dict = Depends(require_user), db: _PgConn = Depends(
             FROM users
             WHERE customer_id IS NOT NULL AND customer_id <> ''
             {cust_where}
+            ORDER BY customer_id
         ) u
         LEFT JOIN (
             SELECT s.customer_id,
