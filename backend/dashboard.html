@@ -65,7 +65,8 @@ body{font-family:'DM Sans',system-ui,sans-serif;font-size:14px;line-height:1.5;
   position:fixed;top:0;left:0;bottom:0;z-index:100;}
 .sidebar-logo{padding:22px 20px 18px;border-bottom:1px solid rgba(255,255,255,.06);margin-bottom:8px;}
 .logo-row{display:flex;align-items:center;gap:10px;}
-.wordmark{font-family:'Syne',sans-serif;font-weight:800;font-size:18px;color:#fff;letter-spacing:-.3px;}
+.logo-text{display:flex;flex-direction:column;gap:2px;}
+.wordmark{font-family:'Syne',sans-serif;font-weight:800;font-size:18px;color:#fff;letter-spacing:-.3px;line-height:1;}
 .wordmark span{color:var(--sidebar-pip);}
 .tagline{font-size:10px;color:var(--sidebar-text);letter-spacing:.06em;text-transform:uppercase;margin-top:2px;}
 .nav-section{padding:6px 12px 2px;font-size:9px;font-weight:600;letter-spacing:.1em;
@@ -374,7 +375,7 @@ tr:hover td{background:var(--surface2);}
           <path d="M16 2L4 7v9c0 7 5.3 13.5 12 15 6.7-1.5 12-8 12-15V7L16 2z" fill="#00C49A"/>
           <path d="M11 16.5l3.5 3.5 6.5-7" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
-        Data<span>Sentry</span>
+        <span>Data</span>Sentry
       </div>
       <div class="login-sub">Data Discovery &amp; Compliance Platform</div>
     </div>
@@ -435,9 +436,11 @@ tr:hover td{background:var(--surface2);}
         <path d="M16 2L4 7v9c0 7 5.3 13.5 12 15 6.7-1.5 12-8 12-15V7L16 2z" fill="#00C49A"/>
         <path d="M11 16.5l3.5 3.5 6.5-7" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
-      <div class="wordmark">Data<span>Sentry</span></div>
+      <div class="logo-text">
+        <div class="wordmark"><span>Data</span>Sentry</div>
+        <div class="tagline">Data Discovery &amp; Compliance</div>
+      </div>
     </div>
-    <div class="tagline">Data Discovery & Compliance</div>
   </div>
   <div class="nav-section">Overview</div>
   <div class="nav-item active" onclick="showSection('overview',this)">
