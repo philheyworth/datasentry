@@ -937,77 +937,73 @@ def _make_guid(seed: str) -> str:
     return str(uuid.uuid5(_DATASENTRY_GUID_NS, seed)).upper()
 
 
-# WiX 3 XML template — placeholders replaced per customer
+# WiX 3 XML template — uses only elements supported by wixl (msitools)
+# Note: MajorUpgrade is NOT supported by wixl; we use a simple Media cab instead.
 _WXS_TEMPLATE = r"""<?xml version="1.0" encoding="UTF-8"?>
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
 
   <Product Id="{__PRODUCT_GUID__}"
-           Name="DataSentry ({__DISPLAY_NAME__})"
+           Name="DataSentry (__DISPLAY_NAME__)"
            Language="1033"
            Version="1.0.0"
            Manufacturer="DataSentry"
            UpgradeCode="{__UPGRADE_GUID__}">
 
-    <Package InstallerVersion="200" Compressed="yes" InstallScope="perMachine" />
+    <Package InstallerVersion="301" Compressed="yes" InstallScope="perMachine" />
 
-    <!-- Always remove prior version before installing new one -->
-    <MajorUpgrade DowngradeErrorMessage="A newer version of DataSentry is already installed." />
-
-    <MediaTemplate EmbedCab="yes" />
+    <Media Id="1" Cabinet="DataSentry.cab" EmbedCab="yes" />
 
     <!-- ── Feature ───────────────────────────────────────────────────── -->
     <Feature Id="MainFeature" Title="DataSentry Agent" Level="1">
-      <ComponentGroupRef Id="AppFiles" />
+      <ComponentRef Id="MainExe" />
+      <ComponentRef Id="CfgFile" />
       <ComponentRef Id="ProgramMenuShortcuts" />
     </Feature>
 
-    <!-- ── Install dir: %ProgramFiles%\DataSentry\<slug>\ ────────────── -->
+    <!-- ── Directory layout ──────────────────────────────────────────── -->
     <Directory Id="TARGETDIR" Name="SourceDir">
       <Directory Id="ProgramFilesFolder">
         <Directory Id="DataSentryRoot" Name="DataSentry">
-          <Directory Id="INSTALLDIR" Name="__SLUG__" />
+          <Directory Id="INSTALLDIR" Name="__SLUG__">
+
+            <Component Id="MainExe" Guid="{__EXE_COMP_GUID__}">
+              <File Id="DataSentryExe" Source="DataSentry.exe" DiskId="1" KeyPath="yes" />
+            </Component>
+
+            <Component Id="CfgFile" Guid="{__CFG_COMP_GUID__}">
+              <File Id="DataSentryCfg" Source="datasentry.cfg" DiskId="1" KeyPath="yes" />
+            </Component>
+
+          </Directory>
         </Directory>
       </Directory>
 
       <!-- Start Menu -->
       <Directory Id="ProgramMenuFolder">
-        <Directory Id="ApplicationProgramsFolder" Name="DataSentry ({__DISPLAY_NAME__})" />
+        <Directory Id="AppMenuFolder" Name="DataSentry (__DISPLAY_NAME__)">
+
+          <Component Id="ProgramMenuShortcuts" Guid="{__SC_COMP_GUID__}">
+            <Shortcut Id="RunShortcut"
+                      Name="Run DataSentry Scan"
+                      Description="Scan this machine for PII and upload results"
+                      Target="[INSTALLDIR]DataSentry.exe"
+                      WorkingDirectory="INSTALLDIR" />
+            <Shortcut Id="UninstallShortcut"
+                      Name="Uninstall DataSentry"
+                      Description="Remove DataSentry from this machine"
+                      Target="[System64Folder]msiexec.exe"
+                      Arguments="/x {__PRODUCT_GUID__}" />
+            <RemoveFolder Id="CleanupMenuFolder" On="uninstall" />
+            <RegistryValue Root="HKCU"
+                           Key="Software\DataSentry\__SLUG__"
+                           Name="installed"
+                           Type="integer" Value="1"
+                           KeyPath="yes" />
+          </Component>
+
+        </Directory>
       </Directory>
     </Directory>
-
-    <!-- ── App files ──────────────────────────────────────────────────── -->
-    <ComponentGroup Id="AppFiles" Directory="INSTALLDIR">
-      <Component Id="MainExe" Guid="{__EXE_COMP_GUID__}">
-        <File Id="DataSentryExe" Source="DataSentry.exe" KeyPath="yes" />
-      </Component>
-      <Component Id="CfgFile" Guid="{__CFG_COMP_GUID__}">
-        <File Id="DataSentryCfg" Source="datasentry.cfg" KeyPath="yes" />
-      </Component>
-    </ComponentGroup>
-
-    <!-- ── Start Menu shortcuts ──────────────────────────────────────── -->
-    <DirectoryRef Id="ApplicationProgramsFolder">
-      <Component Id="ProgramMenuShortcuts" Guid="{__SC_COMP_GUID__}">
-        <Shortcut Id="RunShortcut"
-                  Name="Run DataSentry Scan"
-                  Description="Scan this machine for PII and upload results"
-                  Target="[INSTALLDIR]DataSentry.exe"
-                  WorkingDirectory="INSTALLDIR" />
-        <Shortcut Id="UninstallShortcut"
-                  Name="Uninstall DataSentry"
-                  Description="Remove DataSentry from this machine"
-                  Target="[System64Folder]msiexec.exe"
-                  Arguments="/x {__PRODUCT_GUID__}" />
-        <RemoveFolder Id="CleanupProgramMenuFolder"
-                      Directory="ApplicationProgramsFolder"
-                      On="uninstall" />
-        <RegistryValue Root="HKCU"
-                       Key="Software\DataSentry\__SLUG__"
-                       Name="installed"
-                       Type="integer" Value="1"
-                       KeyPath="yes" />
-      </Component>
-    </DirectoryRef>
 
   </Product>
 </Wix>
@@ -1047,15 +1043,22 @@ def _build_msi(exe_bytes: bytes, cfg: str, slug: str, display_name: str) -> byte
             msi_path = tmp / "DataSentry.msi"
             wxs_path.write_text(wxs, encoding="utf-8")
 
+            print(f"[DataSentry] Running wixl in {tmpdir}", flush=True)
             result = subprocess.run(
-                ["wixl", "-o", str(msi_path), str(wxs_path)],
+                ["wixl", "-a", "x64", "-o", str(msi_path), str(wxs_path)],
                 capture_output=True, text=True, timeout=120,
                 cwd=tmpdir
             )
+            print(f"[DataSentry] wixl rc={result.returncode}", flush=True)
+            if result.stdout:
+                print(f"[DataSentry] wixl stdout: {result.stdout}", flush=True)
+            if result.stderr:
+                print(f"[DataSentry] wixl stderr: {result.stderr}", flush=True)
             if result.returncode != 0:
-                print(f"[DataSentry] wixl error: {result.stderr}", flush=True)
                 return None
 
+            msi_size = msi_path.stat().st_size
+            print(f"[DataSentry] MSI built: {msi_size:,} bytes", flush=True)
             return msi_path.read_bytes()
 
     except FileNotFoundError:
