@@ -545,6 +545,17 @@ def list_users(payload: dict = Depends(require_admin), db: _PgConn = Depends(get
     return [dict(r) for r in rows]
 
 
+@app.delete("/auth/users/{user_id}", status_code=204)
+def delete_user(user_id: int, payload: dict = Depends(require_admin),
+                db: _PgConn = Depends(get_db)):
+    if int(payload["sub"]) == user_id:
+        raise HTTPException(status_code=400, detail="Cannot delete your own account")
+    result = db.execute("DELETE FROM users WHERE id = %s", (user_id,))
+    db.commit()
+    if result.rowcount == 0:
+        raise HTTPException(status_code=404, detail="User not found")
+
+
 @app.post("/auth/change-password")
 def change_password(body: ChangePasswordRequest, payload: dict = Depends(require_user),
                     db: _PgConn = Depends(get_db)):
