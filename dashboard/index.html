@@ -43,9 +43,10 @@
       backdrop-filter: blur(12px);
       border-bottom: 1px solid var(--border);
     }
-    .logo { display: flex; align-items: center; gap: 12px; font-family: 'Nunito', sans-serif; font-size: 22px; font-weight: 900; letter-spacing: -.01em; text-decoration: none; color: #fff; }
+    .logo { display: flex; align-items: center; gap: 12px; text-decoration: none; }
     .logo svg { flex-shrink: 0; }
-    .logo span { color: #00C896; }
+    .logo-name { font-family: 'Nunito', sans-serif; font-size: 22px; font-weight: 900; letter-spacing: -.01em; color: #fff; white-space: nowrap; }
+    .logo-accent { color: #00C896; }
     .nav-links { display: flex; align-items: center; gap: 32px; }
     .nav-links a { font-size: 14px; font-weight: 500; color: var(--text2); text-decoration: none; transition: color .2s; }
     .nav-links a:hover { color: var(--text); }
@@ -242,7 +243,7 @@
       <path d="M28 3C22.5 4.8 14 9 6.5 13.5L6.5 30C6.5 44.5 16 55.5 28 59C40 55.5 49.5 44.5 49.5 30L49.5 13.5C42 9 33.5 4.8 28 3Z" fill="#00C896"/>
       <path d="M17 33l8 8 14-17" stroke="white" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
-    <span>Data</span>Sentry
+    <span class="logo-name"><span class="logo-accent">Data</span>Sentry</span>
   </a>
   <div class="nav-links">
     <a href="#features">Features</a>
