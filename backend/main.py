@@ -18,6 +18,9 @@ import json
 import hashlib
 import secrets
 import zipfile
+import uuid
+import subprocess
+import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
@@ -921,6 +924,148 @@ def _fetch_base_exe() -> bytes | None:
         return None
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# MSI INSTALLER HELPERS
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Stable namespace UUID for deterministic per-customer GUIDs
+_DATASENTRY_GUID_NS = uuid.UUID("c0deb00b-feed-face-cafe-da7a5e170001")
+
+
+def _make_guid(seed: str) -> str:
+    """Return a deterministic, uppercase GUID string based on seed."""
+    return str(uuid.uuid5(_DATASENTRY_GUID_NS, seed)).upper()
+
+
+# WiX 3 XML template — placeholders replaced per customer
+_WXS_TEMPLATE = r"""<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+
+  <Product Id="{__PRODUCT_GUID__}"
+           Name="DataSentry ({__DISPLAY_NAME__})"
+           Language="1033"
+           Version="1.0.0"
+           Manufacturer="DataSentry"
+           UpgradeCode="{__UPGRADE_GUID__}">
+
+    <Package InstallerVersion="200" Compressed="yes" InstallScope="perMachine" />
+
+    <!-- Always remove prior version before installing new one -->
+    <MajorUpgrade DowngradeErrorMessage="A newer version of DataSentry is already installed." />
+
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- ── Feature ───────────────────────────────────────────────────── -->
+    <Feature Id="MainFeature" Title="DataSentry Agent" Level="1">
+      <ComponentGroupRef Id="AppFiles" />
+      <ComponentRef Id="ProgramMenuShortcuts" />
+    </Feature>
+
+    <!-- ── Install dir: %ProgramFiles%\DataSentry\<slug>\ ────────────── -->
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFilesFolder">
+        <Directory Id="DataSentryRoot" Name="DataSentry">
+          <Directory Id="INSTALLDIR" Name="__SLUG__" />
+        </Directory>
+      </Directory>
+
+      <!-- Start Menu -->
+      <Directory Id="ProgramMenuFolder">
+        <Directory Id="ApplicationProgramsFolder" Name="DataSentry ({__DISPLAY_NAME__})" />
+      </Directory>
+    </Directory>
+
+    <!-- ── App files ──────────────────────────────────────────────────── -->
+    <ComponentGroup Id="AppFiles" Directory="INSTALLDIR">
+      <Component Id="MainExe" Guid="{__EXE_COMP_GUID__}">
+        <File Id="DataSentryExe" Source="DataSentry.exe" KeyPath="yes" />
+      </Component>
+      <Component Id="CfgFile" Guid="{__CFG_COMP_GUID__}">
+        <File Id="DataSentryCfg" Source="datasentry.cfg" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <!-- ── Start Menu shortcuts ──────────────────────────────────────── -->
+    <DirectoryRef Id="ApplicationProgramsFolder">
+      <Component Id="ProgramMenuShortcuts" Guid="{__SC_COMP_GUID__}">
+        <Shortcut Id="RunShortcut"
+                  Name="Run DataSentry Scan"
+                  Description="Scan this machine for PII and upload results"
+                  Target="[INSTALLDIR]DataSentry.exe"
+                  WorkingDirectory="INSTALLDIR" />
+        <Shortcut Id="UninstallShortcut"
+                  Name="Uninstall DataSentry"
+                  Description="Remove DataSentry from this machine"
+                  Target="[System64Folder]msiexec.exe"
+                  Arguments="/x {__PRODUCT_GUID__}" />
+        <RemoveFolder Id="CleanupProgramMenuFolder"
+                      Directory="ApplicationProgramsFolder"
+                      On="uninstall" />
+        <RegistryValue Root="HKCU"
+                       Key="Software\DataSentry\__SLUG__"
+                       Name="installed"
+                       Type="integer" Value="1"
+                       KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+
+  </Product>
+</Wix>
+"""
+
+
+def _build_msi(exe_bytes: bytes, cfg: str, slug: str, display_name: str) -> bytes | None:
+    """
+    Build a Windows MSI using wixl (msitools).  Returns MSI bytes, or None on failure.
+    wixl must be available on PATH (installed via apt msitools in the Dockerfile).
+    """
+    # Derive stable GUIDs from slug so re-downloads produce upgrade-compatible MSIs
+    product_guid  = _make_guid(f"product:{slug}")
+    upgrade_guid  = _make_guid(f"upgrade:{slug}")
+    exe_comp_guid = _make_guid(f"exe-comp:{slug}")
+    cfg_comp_guid = _make_guid(f"cfg-comp:{slug}")
+    sc_comp_guid  = _make_guid(f"sc-comp:{slug}")
+
+    wxs = _WXS_TEMPLATE
+    for token, value in [
+        ("__PRODUCT_GUID__",  product_guid),
+        ("__UPGRADE_GUID__",  upgrade_guid),
+        ("__EXE_COMP_GUID__", exe_comp_guid),
+        ("__CFG_COMP_GUID__", cfg_comp_guid),
+        ("__SC_COMP_GUID__",  sc_comp_guid),
+        ("__SLUG__",          slug),
+        ("__DISPLAY_NAME__",  display_name),
+    ]:
+        wxs = wxs.replace(token, value)
+
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            (tmp / "DataSentry.exe").write_bytes(exe_bytes)
+            (tmp / "datasentry.cfg").write_text(cfg, encoding="utf-8")
+            wxs_path = tmp / "installer.wxs"
+            msi_path = tmp / "DataSentry.msi"
+            wxs_path.write_text(wxs, encoding="utf-8")
+
+            result = subprocess.run(
+                ["wixl", "-o", str(msi_path), str(wxs_path)],
+                capture_output=True, text=True, timeout=120,
+                cwd=tmpdir
+            )
+            if result.returncode != 0:
+                print(f"[DataSentry] wixl error: {result.stderr}", flush=True)
+                return None
+
+            return msi_path.read_bytes()
+
+    except FileNotFoundError:
+        print("[DataSentry] wixl not found — falling back to ZIP", flush=True)
+        return None
+    except Exception as e:
+        print(f"[DataSentry] MSI build failed: {e}", flush=True)
+        return None
+
+
 @app.get("/api/download/config")
 def download_config(request: Request, payload: dict = Depends(require_user),
                     db: _PgConn = Depends(get_db)):
@@ -995,16 +1140,29 @@ api_key       = {api_key}
 customer_id   = {cust_id}
 customer_name = {cust_name}
 """
-    slug     = (cust_id or "datasentry").replace(" ", "-").lower()
-    exe_bytes = _fetch_base_exe()
+    slug         = (cust_id or "datasentry").replace(" ", "-").lower()
+    display_name = cust_name or slug
+    exe_bytes    = _fetch_base_exe()
 
+    # ── Try to build an MSI ──────────────────────────────────────────────
+    if exe_bytes:
+        msi_bytes = _build_msi(exe_bytes, cfg, slug, display_name)
+        if msi_bytes:
+            filename = f"DataSentry-{slug}.msi"
+            return StreamingResponse(
+                io.BytesIO(msi_bytes),
+                media_type="application/x-msi",
+                headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+            )
+
+    # ── Fallback: ZIP with EXE + cfg + install.bat ───────────────────────
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         if exe_bytes:
             zf.writestr("DataSentry.exe", exe_bytes)
         zf.writestr("datasentry.cfg", cfg)
         bat = f"""@echo off
-REM DataSentry — Install & Schedule  ({cust_name or slug})
+REM DataSentry — Install & Schedule  ({display_name})
 REM Run as Administrator on each endpoint.
 setlocal
 set HERE=%~dp0
@@ -1012,7 +1170,7 @@ set INSTALL_DIR=%ProgramFiles%\\DataSentry\\{slug}
 if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"
 copy /y "%HERE%DataSentry.exe" "%INSTALL_DIR%\\DataSentry.exe" >nul
 copy /y "%HERE%datasentry.cfg" "%INSTALL_DIR%\\datasentry.cfg" >nul
-schtasks /create /tn "DataSentry - {cust_name or slug}" ^
+schtasks /create /tn "DataSentry - {display_name}" ^
     /tr "\"%INSTALL_DIR%\\DataSentry.exe\" --cli" ^
     /sc WEEKLY /d MON /st 07:00 /ru SYSTEM /f >nul 2>&1
 echo Installed. Running first scan now...
@@ -1021,7 +1179,7 @@ echo Done.
 pause
 """
         zf.writestr("install.bat", bat)
-        zf.writestr("README.txt", f"""DataSentry Agent — {cust_name or slug}
+        zf.writestr("README.txt", f"""DataSentry Agent — {display_name}
 Generated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}
 
 QUICK START (single machine)
