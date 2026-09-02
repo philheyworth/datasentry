@@ -103,9 +103,6 @@ PII_PATTERNS = {
     "uk_phone": re.compile(
         r'\b(?:(?:\+44|0044|0)[\s\-]?(?:\d[\s\-]?){9,10})\b'
     ),
-    "us_phone": re.compile(
-        r'\b(?:\+1[\s\-]?)?\(?\d{3}\)?[\s\-]?\d{3}[\s\-]?\d{4}\b'
-    ),
     "credit_card": re.compile(
         r'\b(?:4[0-9]{12}(?:[0-9]{3})?'      # Visa
         r'|5[1-5][0-9]{14}'                   # Mastercard
@@ -122,6 +119,11 @@ PII_PATTERNS = {
     "passport": re.compile(
         r'\b[A-Z]{2}\d{6,7}\b'
     ),
+    "uk_driving_licence": re.compile(
+        # DVLA format: 5 surname chars + 6 DOB digits + 2 initials + 3 suffix chars
+        r'\b[A-Z]{5}\d{6}[A-Z]{2}\d[A-Z0-9]{2}\d{3}(?:[A-Z]{2})?\b',
+        re.IGNORECASE
+    ),
     "sort_code": re.compile(
         r'\b\d{2}[-\s]?\d{2}[-\s]?\d{2}\b'
     ),
@@ -134,6 +136,9 @@ PII_PATTERNS = {
     "ip_address": re.compile(
         r'\b(?:\d{1,3}\.){3}\d{1,3}\b'
     ),
+    "mac_address": re.compile(
+        r'\b(?:[0-9A-Fa-f]{2}[:\-]){5}[0-9A-Fa-f]{2}\b'
+    ),
     "date_of_birth": re.compile(
         r'\b(?:0?[1-9]|[12]\d|3[01])[\s/\-.](?:0?[1-9]|1[0-2])[\s/\-.](?:19|20)\d{2}\b'
     ),
@@ -141,6 +146,59 @@ PII_PATTERNS = {
         r'\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b',
         re.IGNORECASE
     ),
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ICO UK GDPR PII TAXONOMY
+# Maps pattern key → (category_id, category_name, legal_classification)
+# ─────────────────────────────────────────────────────────────────────────────
+
+PII_CATEGORY_MAP: dict[str, tuple[int, str, str]] = {
+    "email":              (1,  "Contact Details",                     "General Personal Data"),
+    "uk_phone":           (1,  "Contact Details",                     "General Personal Data"),
+    "date_of_birth":      (2,  "Date of Birth",                       "General Personal Data"),
+    "postcode":           (3,  "Location Data",                       "General Personal Data"),
+    "ip_address":         (4,  "Online & Device Identifiers",         "General Personal Data"),
+    "mac_address":        (4,  "Online & Device Identifiers",         "General Personal Data"),
+    "passport":           (5,  "Official & Government Identifiers",   "General Personal Data"),
+    "uk_nino":            (5,  "Official & Government Identifiers",   "General Personal Data"),
+    "uk_driving_licence": (5,  "Official & Government Identifiers",   "General Personal Data"),
+    "sort_code":          (6,  "Financial Data",                      "General Personal Data"),
+    "uk_bank_account":    (6,  "Financial Data",                      "General Personal Data"),
+    "credit_card":        (6,  "Financial Data",                      "General Personal Data"),
+    "iban":               (6,  "Financial Data",                      "General Personal Data"),
+    "uk_nhs":             (7,  "Health Data",                         "Special Category Data"),
+}
+
+# Filename / folder keyword detection for sensitive ICO categories.
+# Each entry: key → (category_id, category_name, legal_classification, [keywords])
+FILENAME_KEYWORDS: dict[str, tuple[int, str, str, list[str]]] = {
+    "health_records":     (7,  "Health Data",                         "Special Category Data",
+                           ["health", "medical", "patient", "clinical", "nhs", "hospital",
+                            "prescription", "diagnosis", "condition", "treatment", "gp",
+                            "pharmacy", "referral", "appointment"]),
+    "racial_ethnic":      (8,  "Racial or Ethnic Origin",             "Special Category Data",
+                           ["race", "racial", "ethnic", "ethnicity", "nationality",
+                            "immigration", "refugee", "asylum"]),
+    "political":          (9,  "Political Opinions",                  "Special Category Data",
+                           ["political", "politics", "party", "vote", "voting", "election",
+                            "campaign", "manifesto"]),
+    "religious_beliefs":  (10, "Religious or Philosophical Beliefs",  "Special Category Data",
+                           ["religion", "religious", "faith", "church", "mosque", "temple",
+                            "synagogue", "belief", "philosophical", "chaplain"]),
+    "trade_union":        (11, "Trade Union Membership",              "Special Category Data",
+                           ["union", "trade_union", "tradeunion", "membership", "unison",
+                            "gmb", "unite", "industrial", "strike", "picket"]),
+    "biometric":          (12, "Biometric Data",                      "Special Category Data",
+                           ["biometric", "fingerprint", "facial", "face_id", "retina",
+                            "iris", "dna", "genetic", "genome", "voiceprint"]),
+    "sexual_orientation": (13, "Sexual Orientation or Sex Life",      "Special Category Data",
+                           ["sexuality", "sexual", "lgbtq", "lgbt", "orientation",
+                            "gender_identity", "trans", "queer"]),
+    "criminal_records":   (14, "Criminal Convictions & Offences",     "Special Category Data",
+                           ["criminal", "conviction", "offence", "offense", "arrest",
+                            "caution", "police", "crb", "dbs", "disclosure", "barring",
+                            "safeguarding"]),
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -445,6 +503,85 @@ def scan_for_pii(text: str) -> dict[str, int]:
     return findings
 
 
+def check_filename_keywords(file_path: str) -> dict[str, int]:
+    """
+    Detect sensitive ICO categories by matching keywords against the file
+    path (filename + parent folder names).  Returns a dict of
+    {keyword_category_key: 1} for any keyword matched — the '1' acts as
+    a presence flag so it can be merged into pii_findings for display.
+    """
+    path_lower = file_path.replace("\\", "/").lower()
+    # Check every segment of the path, not just the filename
+    detected: dict[str, int] = {}
+    for cat_key, (cat_id, cat_name, classification, keywords) in FILENAME_KEYWORDS.items():
+        for kw in keywords:
+            if kw.lower() in path_lower:
+                detected[cat_key] = 1
+                break
+    return detected
+
+
+def build_ico_summary(pii_findings: dict[str, int]) -> dict[str, dict]:
+    """
+    Group pii_findings by ICO category.  Returns a dict keyed by
+    category_name with sub-keys: id, classification, count, types.
+    Also handles keyword-based detections stored in pii_findings.
+    """
+    categories: dict[str, dict] = {}
+
+    for pii_type, count in pii_findings.items():
+        # Look up in content-pattern map first
+        if pii_type in PII_CATEGORY_MAP:
+            cat_id, cat_name, classification = PII_CATEGORY_MAP[pii_type]
+        elif pii_type in FILENAME_KEYWORDS:
+            cat_id, cat_name, classification, _ = FILENAME_KEYWORDS[pii_type]
+        else:
+            continue  # unknown type — skip
+
+        if cat_name not in categories:
+            categories[cat_name] = {
+                "id":             cat_id,
+                "classification": classification,
+                "count":          0,
+                "types":          [],
+            }
+        categories[cat_name]["count"] += count
+        if pii_type not in categories[cat_name]["types"]:
+            categories[cat_name]["types"].append(pii_type)
+
+    # Sort by category id
+    return dict(sorted(categories.items(), key=lambda x: x[1]["id"]))
+
+
+def pii_type_label(pii_type: str) -> str:
+    """Human-readable label for a PII type key."""
+    labels = {
+        "email":              "Email Address",
+        "uk_phone":           "UK Phone Number",
+        "credit_card":        "Credit / Debit Card Number",
+        "uk_nino":            "National Insurance Number",
+        "uk_nhs":             "NHS Number",
+        "passport":           "Passport Number",
+        "uk_driving_licence": "UK Driving Licence",
+        "sort_code":          "Sort Code",
+        "uk_bank_account":    "Bank Account Number",
+        "iban":               "IBAN",
+        "ip_address":         "IP Address",
+        "mac_address":        "MAC Address",
+        "date_of_birth":      "Date of Birth",
+        "postcode":           "Postcode",
+        "health_records":     "Health / Medical Records",
+        "racial_ethnic":      "Racial or Ethnic Origin Data",
+        "political":          "Political Opinion Data",
+        "religious_beliefs":  "Religious / Philosophical Belief Data",
+        "trade_union":        "Trade Union Membership Data",
+        "biometric":          "Biometric Data",
+        "sexual_orientation": "Sexual Orientation Data",
+        "criminal_records":   "Criminal Records / DBS Data",
+    }
+    return labels.get(pii_type, pii_type.replace("_", " ").title())
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # LOCATION SCANNER
 # ─────────────────────────────────────────────────────────────────────────────
@@ -523,12 +660,19 @@ def scan_location(location: dict, progress_cb=None,
                 pii_status   = "pending"
                 file_pii: dict[str, int] = {}
 
+                # Always check the file path against sensitive keyword lists
+                kw_hits = check_filename_keywords(str(fp))
+
                 if is_local or targeted_pii:
                     # Local file or explicit user-triggered cloud scan
                     if ext in SCAN_EXTENSIONS:
                         text = extract_text(fp)
                         if text:
                             file_pii = scan_for_pii(text)
+                            # Merge keyword detections into file_pii
+                            for kw_key, kw_count in kw_hits.items():
+                                if kw_key not in file_pii:
+                                    file_pii[kw_key] = kw_count
                             pii_status = "findings" if file_pii else "clean"
                             if file_pii:
                                 for pii_type, count in file_pii.items():
@@ -542,10 +686,52 @@ def scan_location(location: dict, progress_cb=None,
                                     "total_pii_count": sum(file_pii.values()),
                                 })
                         else:
-                            pii_status = "skipped"  # unreadable / binary
+                            # Unreadable content — still record keyword hits on path
+                            if kw_hits:
+                                for kw_key, kw_count in kw_hits.items():
+                                    pii_findings[kw_key] = (
+                                        pii_findings.get(kw_key, 0) + kw_count
+                                    )
+                                pii_files.append({
+                                    "path":            str(fp.relative_to(root)),
+                                    "size_bytes":      size,
+                                    "pii_types":       kw_hits,
+                                    "total_pii_count": sum(kw_hits.values()),
+                                })
+                                pii_status = "findings"
+                            else:
+                                pii_status = "skipped"  # unreadable / binary
                     else:
-                        pii_status = "skipped"  # extension not in scan set
-                # else: cloud file in normal mode — stays 'pending' for later
+                        # Extension not in scan set — still record keyword hits
+                        if kw_hits:
+                            for kw_key, kw_count in kw_hits.items():
+                                pii_findings[kw_key] = (
+                                    pii_findings.get(kw_key, 0) + kw_count
+                                )
+                            pii_files.append({
+                                "path":            str(fp.relative_to(root)),
+                                "size_bytes":      size,
+                                "pii_types":       kw_hits,
+                                "total_pii_count": sum(kw_hits.values()),
+                            })
+                            pii_status = "findings"
+                        else:
+                            pii_status = "skipped"  # extension not in scan set
+                else:
+                    # Cloud file in normal mode — still apply keyword detection
+                    if kw_hits:
+                        for kw_key, kw_count in kw_hits.items():
+                            pii_findings[kw_key] = (
+                                pii_findings.get(kw_key, 0) + kw_count
+                            )
+                        pii_files.append({
+                            "path":            str(fp.relative_to(root)),
+                            "size_bytes":      size,
+                            "pii_types":       kw_hits,
+                            "total_pii_count": sum(kw_hits.values()),
+                        })
+                        pii_status = "findings"
+                    # else: stays 'pending' for later content scan
 
                 inventory_records.append({
                     "file_path":      str(fp),
@@ -588,6 +774,7 @@ def scan_location(location: dict, progress_cb=None,
         "total_size_human": human_size(total_size),
         "top_extensions":   top_extensions,
         "pii_summary":      pii_findings,
+        "ico_summary":      build_ico_summary(pii_findings),
         "pii_file_count":   len(pii_files),
         "top_pii_files":    top_pii_files,
         "scanned_at":       datetime.utcnow().isoformat() + "Z",

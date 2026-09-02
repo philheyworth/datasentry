@@ -335,6 +335,13 @@ def init_db():
     """)
     raw.commit()
 
+    # ── Migration: add ico_summary column to scan_locations ──────────────────
+    cur.execute("""
+        ALTER TABLE scan_locations
+        ADD COLUMN IF NOT EXISTS ico_summary TEXT DEFAULT '{}'
+    """)
+    raw.commit()
+
     # ── Migration: fix customer users who were wrongly given role='admin' ─────
     # Any user with a non-empty customer_id and role='admin' is a customer portal
     # user, not the DataSentry super-admin.  Correct their role to 'customer'.
@@ -689,13 +696,14 @@ async def receive_scan(request: Request,
             INSERT INTO scan_locations
                 (scan_id, machine_id, label, location_type, path,
                  total_files, total_size_bytes, pii_file_count,
-                 pii_summary, top_extensions, top_pii_files)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                 pii_summary, ico_summary, top_extensions, top_pii_files)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         """, (
             scan_id, machine_id, loc.get("label"), loc.get("type"), loc.get("path"),
             loc.get("total_files", 0), loc.get("total_size_bytes", 0),
             loc.get("pii_file_count", 0),
             json.dumps(loc.get("pii_summary", {})),
+            json.dumps(loc.get("ico_summary", {})),
             json.dumps(loc.get("top_extensions", [])),
             json.dumps(loc.get("top_pii_files", [])),
         ))

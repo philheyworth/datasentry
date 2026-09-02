@@ -633,6 +633,13 @@ tr:hover td{background:var(--surface2);}
         <div class="card-header"><span class="card-title">PII Breakdown by Type</span></div>
         <div class="card-body" id="pii-detail"></div>
       </div>
+      <div class="card" style="margin-top:12px;">
+        <div class="card-header">
+          <span class="card-title">ICO UK GDPR Category Breakdown</span>
+          <span class="card-meta">Mapped to the ICO's 14-category data classification taxonomy</span>
+        </div>
+        <div class="card-body" id="ico-detail"></div>
+      </div>
     </section>
 
     <!-- STORAGE MAP -->
@@ -1002,11 +1009,42 @@ const LOC_NAMES={local:"Local (Documents / Desktop)",onedrive:"OneDrive Personal
   onedrive_business:"OneDrive for Business / SharePoint",dropbox:"Dropbox",
   google_drive:"Google Drive",icloud:"iCloud Drive",
   network_drive:"Network Drives (SMB/CIFS)",box:"Box Drive",cloud_sync:"Other Cloud Sync"};
-const PII_LABELS={email:"Email Addresses",uk_phone:"UK Phone Numbers",
-  us_phone:"US Phone Numbers",credit_card:"Credit Card Numbers",
-  uk_nino:"UK NI Numbers",uk_nhs:"NHS Numbers",passport:"Passport Numbers",
-  sort_code:"Sort Codes",uk_bank_account:"UK Bank Accounts",iban:"IBAN Numbers",
-  ip_address:"IP Addresses",date_of_birth:"Dates of Birth",postcode:"Postcodes"};
+const PII_LABELS={
+  email:"Email Addresses",uk_phone:"UK Phone Numbers",
+  credit_card:"Credit / Debit Card Numbers",
+  uk_nino:"National Insurance Numbers",uk_nhs:"NHS Numbers",
+  passport:"Passport Numbers",uk_driving_licence:"UK Driving Licences",
+  sort_code:"Sort Codes",uk_bank_account:"Bank Account Numbers",
+  iban:"IBAN Numbers",ip_address:"IP Addresses",
+  mac_address:"MAC Addresses",date_of_birth:"Dates of Birth",
+  postcode:"Postcodes",
+  // Keyword-detected ICO special categories
+  health_records:"Health / Medical Records",
+  racial_ethnic:"Racial or Ethnic Origin Data",
+  political:"Political Opinion Data",
+  religious_beliefs:"Religious / Philosophical Belief Data",
+  trade_union:"Trade Union Membership Data",
+  biometric:"Biometric Data",
+  sexual_orientation:"Sexual Orientation Data",
+  criminal_records:"Criminal Records / DBS Data",
+};
+// ICO category metadata for display
+const ICO_CATEGORIES={
+  "Contact Details":                    {id:1,cls:"General Personal Data",  clsShort:"General",color:"#06B6D4"},
+  "Date of Birth":                      {id:2,cls:"General Personal Data",  clsShort:"General",color:"#10B981"},
+  "Location Data":                      {id:3,cls:"General Personal Data",  clsShort:"General",color:"#14B8A6"},
+  "Online & Device Identifiers":        {id:4,cls:"General Personal Data",  clsShort:"General",color:"#6366F1"},
+  "Official & Government Identifiers":  {id:5,cls:"General Personal Data",  clsShort:"General",color:"#F59E0B"},
+  "Financial Data":                     {id:6,cls:"General Personal Data",  clsShort:"General",color:"#EF4444"},
+  "Health Data":                        {id:7,cls:"Special Category Data",  clsShort:"Special",color:"#EC4899"},
+  "Racial or Ethnic Origin":            {id:8,cls:"Special Category Data",  clsShort:"Special",color:"#A855F7"},
+  "Political Opinions":                 {id:9,cls:"Special Category Data",  clsShort:"Special",color:"#8B5CF6"},
+  "Religious or Philosophical Beliefs": {id:10,cls:"Special Category Data", clsShort:"Special",color:"#F97316"},
+  "Trade Union Membership":             {id:11,cls:"Special Category Data", clsShort:"Special",color:"#84CC16"},
+  "Biometric Data":                     {id:12,cls:"Special Category Data", clsShort:"Special",color:"#0EA5E9"},
+  "Sexual Orientation or Sex Life":     {id:13,cls:"Special Category Data", clsShort:"Special",color:"#F43F5E"},
+  "Criminal Convictions & Offences":    {id:14,cls:"Special Category Data", clsShort:"Special",color:"#DC2626"},
+};
 const PII_COLORS=["#EF4444","#F59E0B","#8B5CF6","#EC4899","#06B6D4",
   "#10B981","#F97316","#6366F1","#14B8A6","#84CC16","#A855F7","#F43F5E","#0EA5E9"];
 const CUST_COLORS={"acme-corp":"#0D6EFD","globex-ltd":"#198754",
@@ -1350,14 +1388,82 @@ function renderPii(){
       <div class="stat-value">${affectedMachines}</div>
       <div class="stat-delta">of ${LIVE.machines.length} scanned</div></div>`;
   const maxP=pii[0]?.[1]||1;
-  document.getElementById("pii-detail").innerHTML=pii.map(([k,v],i)=>`
+  document.getElementById("pii-detail").innerHTML=pii.length?pii.map(([k,v],i)=>`
     <div class="compliance-item">
       <div class="compliance-header">
         <span class="compliance-label">${PII_LABELS[k]||k}</span>
         <span class="compliance-pct" title="${fmtNum(v)} occurrences">${fmtHits(v)} hits</span>
       </div>
       <div class="progress-track"><div class="progress-fill" style="width:${Math.round(v/maxP*100)}%;background:${PII_COLORS[i%PII_COLORS.length]};"></div></div>
-    </div>`).join("");
+    </div>`).join(""):'<div style="color:var(--text3);font-size:13px;padding:8px 0;">No PII found.</div>';
+
+  // ── ICO category breakdown ────────────────────────────────────────────────
+  // Build from pii_totals using the same taxonomy map as the scanner
+  const PII_TO_ICO={
+    email:{id:1,cat:"Contact Details",cls:"General Personal Data"},
+    uk_phone:{id:1,cat:"Contact Details",cls:"General Personal Data"},
+    date_of_birth:{id:2,cat:"Date of Birth",cls:"General Personal Data"},
+    postcode:{id:3,cat:"Location Data",cls:"General Personal Data"},
+    ip_address:{id:4,cat:"Online & Device Identifiers",cls:"General Personal Data"},
+    mac_address:{id:4,cat:"Online & Device Identifiers",cls:"General Personal Data"},
+    passport:{id:5,cat:"Official & Government Identifiers",cls:"General Personal Data"},
+    uk_nino:{id:5,cat:"Official & Government Identifiers",cls:"General Personal Data"},
+    uk_driving_licence:{id:5,cat:"Official & Government Identifiers",cls:"General Personal Data"},
+    sort_code:{id:6,cat:"Financial Data",cls:"General Personal Data"},
+    uk_bank_account:{id:6,cat:"Financial Data",cls:"General Personal Data"},
+    credit_card:{id:6,cat:"Financial Data",cls:"General Personal Data"},
+    iban:{id:6,cat:"Financial Data",cls:"General Personal Data"},
+    uk_nhs:{id:7,cat:"Health Data",cls:"Special Category Data"},
+    health_records:{id:7,cat:"Health Data",cls:"Special Category Data"},
+    racial_ethnic:{id:8,cat:"Racial or Ethnic Origin",cls:"Special Category Data"},
+    political:{id:9,cat:"Political Opinions",cls:"Special Category Data"},
+    religious_beliefs:{id:10,cat:"Religious or Philosophical Beliefs",cls:"Special Category Data"},
+    trade_union:{id:11,cat:"Trade Union Membership",cls:"Special Category Data"},
+    biometric:{id:12,cat:"Biometric Data",cls:"Special Category Data"},
+    sexual_orientation:{id:13,cat:"Sexual Orientation or Sex Life",cls:"Special Category Data"},
+    criminal_records:{id:14,cat:"Criminal Convictions & Offences",cls:"Special Category Data"},
+  };
+  const icoAgg={};
+  for(const [piiType,count] of Object.entries(LIVE.summary.pii_totals||{})){
+    const mapping=PII_TO_ICO[piiType];
+    if(!mapping)continue;
+    const catName=mapping.cat;
+    if(!icoAgg[catName])icoAgg[catName]={id:mapping.id,classification:mapping.cls,count:0,types:[]};
+    icoAgg[catName].count+=count;
+    if(!icoAgg[catName].types.includes(piiType))icoAgg[catName].types.push(piiType);
+  }
+  const icoEntries=Object.entries(icoAgg).sort((a,b)=>a[1].id-b[1].id);
+  const maxIco=Math.max(...icoEntries.map(([,v])=>v.count),1);
+  const icoEl=document.getElementById("ico-detail");
+  if(icoEntries.length){
+    const general=icoEntries.filter(([,v])=>v.classification==="General Personal Data");
+    const special=icoEntries.filter(([,v])=>v.classification==="Special Category Data");
+    function icoGroup(label,entries,badgeCls){
+      if(!entries.length)return"";
+      return`<div style="margin-bottom:16px;">
+        <div style="font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+          color:var(--text3);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border);">${label}</div>
+        ${entries.map(([catName,catData])=>{
+          const meta=ICO_CATEGORIES[catName]||{color:"#64748B"};
+          const typePills=(catData.types||[]).map(t=>`<span style="background:var(--surface2);color:var(--text2);
+            font-size:10px;padding:1px 6px;border-radius:3px;margin-right:3px;">${PII_LABELS[t]||t}</span>`).join("");
+          return`<div class="compliance-item" style="margin-bottom:6px;">
+            <div class="compliance-header" style="align-items:flex-start;">
+              <span class="compliance-label" style="display:flex;flex-direction:column;gap:3px;">
+                <span>${catName}</span>
+                <span style="font-size:10.5px;color:var(--text3);font-weight:400;">${typePills}</span>
+              </span>
+              <span class="compliance-pct">${fmtHits(catData.count)} hits</span>
+            </div>
+            <div class="progress-track"><div class="progress-fill" style="width:${Math.round(catData.count/maxIco*100)}%;background:${meta.color||"#64748B"};"></div></div>
+          </div>`;
+        }).join("")}
+      </div>`;
+    }
+    icoEl.innerHTML=icoGroup("General Personal Data",general,"general")+icoGroup("Special Category Data (Higher Risk)",special,"special");
+  }else{
+    icoEl.innerHTML='<div style="color:var(--text3);font-size:13px;padding:8px 0;">No ICO category data — run a scan to populate.</div>';
+  }
 }
 
 // ── RENDER LOCATIONS ─────────────────────────────────────
