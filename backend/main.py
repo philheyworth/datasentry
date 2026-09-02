@@ -327,6 +327,14 @@ def init_db():
         raw.commit()
         print("  Admin password synced from DATASENTRY_ADMIN_PASSWORD env var.")
 
+    # ── Migration: add password-reset columns to users ───────────────────────
+    cur.execute("""
+        ALTER TABLE users
+        ADD COLUMN IF NOT EXISTS pw_reset_token TEXT,
+        ADD COLUMN IF NOT EXISTS pw_reset_expires TIMESTAMPTZ
+    """)
+    raw.commit()
+
     # ── Migration: fix customer users who were wrongly given role='admin' ─────
     # Any user with a non-empty customer_id and role='admin' is a customer portal
     # user, not the DataSentry super-admin.  Correct their role to 'customer'.
@@ -554,6 +562,70 @@ def delete_user(user_id: int, payload: dict = Depends(require_admin),
     db.commit()
     if result.rowcount == 0:
         raise HTTPException(status_code=404, detail="User not found")
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+@app.post("/auth/forgot-password")
+def forgot_password(body: ForgotPasswordRequest, db: _PgConn = Depends(get_db)):
+    """Generate a one-time reset token valid for 1 hour. Token returned in response
+    so the admin / requester can share the link (no email server required)."""
+    row = db.execute("SELECT id FROM users WHERE email = %s AND active = TRUE",
+                     (body.email.lower().strip(),)).fetchone()
+    if not row:
+        # Return success anyway to avoid email enumeration
+        return {"message": "If that email exists a reset link has been generated."}
+    raw_token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+    db.execute(
+        "UPDATE users SET pw_reset_token=%s, pw_reset_expires=NOW() + INTERVAL '1 hour'"
+        " WHERE id=%s",
+        (token_hash, row["id"])
+    )
+    db.commit()
+    return {"reset_token": raw_token,
+            "message": "Copy the reset link and open it in a browser or send it to the user."}
+
+
+@app.post("/auth/reset-password")
+def reset_password(body: ResetPasswordRequest, db: _PgConn = Depends(get_db)):
+    token_hash = hashlib.sha256(body.token.encode()).hexdigest()
+    row = db.execute(
+        "SELECT id FROM users WHERE pw_reset_token=%s AND pw_reset_expires > NOW()",
+        (token_hash,)
+    ).fetchone()
+    if not row:
+        raise HTTPException(status_code=400, detail="Reset link is invalid or has expired.")
+    db.execute(
+        "UPDATE users SET password_hash=%s, pw_reset_token=NULL, pw_reset_expires=NULL"
+        " WHERE id=%s",
+        (_hash_password(body.new_password), row["id"])
+    )
+    db.commit()
+    return {"message": "Password updated. You can now sign in."}
+
+
+@app.post("/auth/admin-reset-link/{user_id}")
+def admin_reset_link(user_id: int, payload: dict = Depends(require_admin),
+                     db: _PgConn = Depends(get_db)):
+    """Admin generates a one-time password reset link for any user."""
+    row = db.execute("SELECT id, email FROM users WHERE id=%s", (user_id,)).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="User not found")
+    raw_token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+    db.execute(
+        "UPDATE users SET pw_reset_token=%s, pw_reset_expires=NOW() + INTERVAL '1 hour'"
+        " WHERE id=%s",
+        (token_hash, user_id)
+    )
+    db.commit()
+    return {"reset_token": raw_token, "email": row["email"]}
 
 
 @app.post("/auth/change-password")

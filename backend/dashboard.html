@@ -379,7 +379,7 @@ tr:hover td{background:var(--surface2);}
       </div>
       <div class="login-sub">Data Discovery &amp; Compliance Platform</div>
     </div>
-    <div class="login-body">
+    <div class="login-body" id="login-body-main">
       <h2>Sign in</h2>
       <p>Enter your server address and login credentials.</p>
       <label class="login-label">Server URL</label>
@@ -394,7 +394,37 @@ tr:hover td{background:var(--surface2);}
              placeholder="••••••••••••" autocomplete="current-password">
       <button class="login-btn" id="ls-btn" onclick="doLogin()">Sign in</button>
       <div class="login-err" id="ls-err"></div>
-      <div class="login-demo"><a onclick="enterDemoMode()">Continue in demo mode (no server required)</a></div>
+      <div style="text-align:center;margin-top:12px;">
+        <a onclick="showForgot()" style="font-size:12px;color:var(--accent);cursor:pointer;text-decoration:underline;">Forgot password?</a>
+      </div>
+    </div>
+    <!-- FORGOT PASSWORD PANEL -->
+    <div class="login-body" id="forgot-panel" style="display:none;">
+      <h2>Reset Password</h2>
+      <p>Enter your email — a reset link will be generated for you to copy and open.</p>
+      <label class="login-label">Email</label>
+      <input class="login-input" id="fp-email" type="email" placeholder="your@email.com">
+      <button class="login-btn" onclick="doForgot()">Generate reset link</button>
+      <div class="login-err" id="fp-err" style="margin-top:8px;"></div>
+      <div id="fp-link-box" style="display:none;margin-top:12px;background:var(--accent-bg);border:1px solid var(--accent);border-radius:6px;padding:12px;">
+        <div style="font-size:11px;color:var(--accent);font-weight:600;margin-bottom:6px;">RESET LINK (valid 1 hour)</div>
+        <div id="fp-link" style="font-size:11px;word-break:break-all;font-family:monospace;"></div>
+        <button onclick="copyResetLink()" style="margin-top:8px;font-size:11px;padding:4px 10px;background:var(--accent);color:#fff;border:none;border-radius:4px;cursor:pointer;">Copy link</button>
+      </div>
+      <div style="text-align:center;margin-top:12px;">
+        <a onclick="showLogin()" style="font-size:12px;color:var(--accent);cursor:pointer;text-decoration:underline;">Back to sign in</a>
+      </div>
+    </div>
+    <!-- RESET PASSWORD PANEL -->
+    <div class="login-body" id="reset-panel" style="display:none;">
+      <h2>Set New Password</h2>
+      <p>Enter your new password below.</p>
+      <label class="login-label">New Password</label>
+      <input class="login-input" id="rp-pass" type="password" placeholder="New password">
+      <label class="login-label">Confirm Password</label>
+      <input class="login-input" id="rp-confirm" type="password" placeholder="Confirm password">
+      <button class="login-btn" onclick="doReset()">Set new password</button>
+      <div class="login-err" id="rp-err" style="margin-top:8px;"></div>
     </div>
     <div class="login-footer">DataSentry v2 · Data Discovery &amp; GDPR Compliance</div>
   </div>
@@ -1758,10 +1788,16 @@ async function loadUsers(){
           <div style="font-weight:600;">${escHtml(u.name||u.email)}</div>
           <div style="font-size:11px;color:var(--text2);">${escHtml(u.email)} · <span style="text-transform:capitalize;">${escHtml(u.role)}</span>${u.customer_name?' · '+escHtml(u.customer_name):''}</div>
         </div>
-        <button onclick="deleteUser(${u.id},'${escHtml(u.email)}')"
-          style="background:transparent;border:1px solid var(--risk);color:var(--risk);border-radius:4px;padding:3px 10px;font-size:11px;cursor:pointer;">
-          Remove
-        </button>
+        <div style="display:flex;gap:6px;">
+          <button onclick="adminResetLink(${u.id},'${escHtml(u.email)}')"
+            style="background:transparent;border:1px solid var(--accent);color:var(--accent);border-radius:4px;padding:3px 10px;font-size:11px;cursor:pointer;">
+            Reset pwd
+          </button>
+          <button onclick="deleteUser(${u.id},'${escHtml(u.email)}')"
+            style="background:transparent;border:1px solid var(--risk);color:var(--risk);border-radius:4px;padding:3px 10px;font-size:11px;cursor:pointer;">
+            Remove
+          </button>
+        </div>
       </div>`).join("");
     document.getElementById("users-list").innerHTML=rows||"<div style='color:var(--text2);font-size:13px;'>No additional users yet.</div>";
   }catch(e){document.getElementById("users-list").textContent="Error: "+e.message;}
@@ -1774,6 +1810,73 @@ async function deleteUser(id,email){
     loadUsers();
   }catch(e){alert("Could not remove user: "+e.message);}
 }
+async function adminResetLink(id,email){
+  try{
+    const r=await api("/auth/admin-reset-link/"+id,{method:"POST"});
+    if(!r.ok){const e=await r.json().catch(()=>({}));throw new Error(e.detail||r.statusText);}
+    const d=await r.json();
+    const link=window.location.origin+window.location.pathname+"#reset/"+d.reset_token;
+    prompt("Reset link for "+email+" (valid 1 hour) — copy and send to user:",link);
+  }catch(e){alert("Error: "+e.message);}
+}
+// ── FORGOT / RESET PASSWORD UI ────────────────────────────────────────────────
+function showForgot(){
+  document.getElementById("login-body-main").style.display="none";
+  document.getElementById("forgot-panel").style.display="block";
+  document.getElementById("reset-panel").style.display="none";
+}
+function showLogin(){
+  document.getElementById("login-body-main").style.display="block";
+  document.getElementById("forgot-panel").style.display="none";
+  document.getElementById("reset-panel").style.display="none";
+}
+async function doForgot(){
+  const email=document.getElementById("fp-email").value.trim();
+  const errEl=document.getElementById("fp-err");
+  const linkBox=document.getElementById("fp-link-box");
+  errEl.textContent="";linkBox.style.display="none";
+  if(!email){errEl.textContent="Email is required.";return;}
+  const url=document.getElementById("ls-url").value.trim()||window.location.origin;
+  try{
+    const r=await fetch(url+"/auth/forgot-password",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email})});
+    const d=await r.json();
+    if(d.reset_token){
+      const link=window.location.origin+window.location.pathname+"#reset/"+d.reset_token;
+      document.getElementById("fp-link").textContent=link;
+      linkBox.style.display="block";
+    } else {
+      errEl.style.color="var(--ok)";errEl.textContent=d.message||"Check your email.";
+    }
+  }catch(e){errEl.textContent="Error: "+e.message;}
+}
+function copyResetLink(){
+  const txt=document.getElementById("fp-link").textContent;
+  navigator.clipboard.writeText(txt).then(()=>alert("Link copied!")).catch(()=>prompt("Copy this link:",txt));
+}
+async function doReset(){
+  const pass=document.getElementById("rp-pass").value;
+  const conf=document.getElementById("rp-confirm").value;
+  const errEl=document.getElementById("rp-err");
+  errEl.textContent="";
+  if(!pass){errEl.textContent="Password is required.";return;}
+  if(pass!==conf){errEl.textContent="Passwords do not match.";return;}
+  const token=window._resetToken;
+  const url=document.getElementById("ls-url")?.value.trim()||window.location.origin;
+  try{
+    const r=await fetch(url+"/auth/reset-password",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token,new_password:pass})});
+    const d=await r.json();
+    if(!r.ok)throw new Error(d.detail||r.statusText);
+    errEl.style.color="var(--ok)";errEl.textContent="✓ "+d.message;
+    setTimeout(()=>{history.replaceState(null,"",window.location.pathname);showLogin();},2000);
+  }catch(e){errEl.textContent="✗ "+e.message;}
+}
+// Check on load for #reset/TOKEN in URL
+(function checkResetHash(){
+  const m=location.hash.match(/^#reset\/(.+)$/);
+  if(!m)return;
+  window._resetToken=m[1];
+  // Will be called after DOM ready — handled in window.onload
+})();
 function escHtml(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
 async function createUser(){
   const email=document.getElementById("new-user-email").value.trim();
@@ -2111,6 +2214,14 @@ function initDashboard(){
   // Pre-fill URL from last session
   const savedUrl=localStorage.getItem("ds_url");
   if(savedUrl)document.getElementById("ls-url").value=savedUrl;
+  // Check for password-reset hash
+  const resetMatch=location.hash.match(/^#reset\/(.+)$/);
+  if(resetMatch){
+    window._resetToken=resetMatch[1];
+    document.getElementById("login-body-main").style.display="none";
+    document.getElementById("forgot-panel").style.display="none";
+    document.getElementById("reset-panel").style.display="block";
+  }
   // Show login screen (already visible by default)
 })();
 </script>
