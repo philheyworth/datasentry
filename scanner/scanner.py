@@ -201,17 +201,20 @@ def get_windows_locations() -> list[dict]:
                 locations.append({"label": "OneDrive Personal",
                                   "path": str(od_personal), "type": "onedrive"})
 
-    # Dropbox — read config file for actual path (most reliable)
+    # Dropbox — search ALL user profiles for info.json, then fall back to glob.
+    # Must search every profile because the scanner may run as SYSTEM/Administrator
+    # while Dropbox belongs to a different Windows user (e.g. Phil).
     dropbox_found: set[str] = set()
-    dropbox_info = Path(os.environ.get("APPDATA", "")) / "Dropbox" / "info.json"
-    if dropbox_info.exists():
+
+    def _add_dropbox_from_info(info_path: Path) -> None:
+        """Parse a Dropbox info.json and register any valid paths."""
         try:
-            with open(dropbox_info) as f:
+            with open(info_path) as f:
                 db_config = json.load(f)
             for account_type in ("personal", "business"):
                 if account_type in db_config:
                     db_path = Path(db_config[account_type]["path"])
-                    if db_path.exists():
+                    if db_path.exists() and str(db_path) not in dropbox_found:
                         dropbox_found.add(str(db_path))
                         locations.append({
                             "label": f"Dropbox ({account_type.capitalize()})",
@@ -221,36 +224,27 @@ def get_windows_locations() -> list[dict]:
         except Exception:
             pass
 
-    # Dropbox — Windows registry fallback (catches Dropbox Business installs)
-    if not dropbox_found:
-        try:
-            import winreg
-            for reg_root in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
-                for reg_path in (r"SOFTWARE\Dropbox", r"SOFTWARE\WOW6432Node\Dropbox"):
-                    try:
-                        key = winreg.OpenKey(reg_root, reg_path)
-                        db_path_str = winreg.QueryValueEx(key, "InstallPath")[0]
-                        winreg.CloseKey(key)
-                        # InstallPath is the app install dir; actual data is usually one level up
-                        # Try common subdirs
-                        for candidate in [Path(db_path_str).parent / "Dropbox",
-                                          Path(db_path_str) / "Dropbox"]:
-                            if candidate.exists() and str(candidate) not in dropbox_found:
-                                dropbox_found.add(str(candidate))
-                                locations.append({"label": f"Dropbox ({candidate.name})",
-                                                  "path": str(candidate), "type": "dropbox"})
-                    except Exception:
-                        pass
-        except Exception:
-            pass
+    # 1. Current user's APPDATA\Dropbox\info.json
+    _cur_appdata = Path(os.environ.get("APPDATA", ""))
+    if _cur_appdata:
+        _add_dropbox_from_info(_cur_appdata / "Dropbox" / "info.json")
 
-    # Dropbox — glob fallback: catch any ~/Dropbox* folder (handles all naming variants)
+    # 2. Every other user profile's AppData\Roaming\Dropbox\info.json
+    for _root in _search_roots:
+        if _root == home:
+            continue  # already handled via APPDATA above
+        _add_dropbox_from_info(
+            _root / "AppData" / "Roaming" / "Dropbox" / "info.json"
+        )
+
+    # 3. Glob fallback across all user profiles: catch ~/Dropbox* folders
     if not dropbox_found:
-        for fallback in home.glob("Dropbox*"):
-            if fallback.is_dir() and str(fallback) not in dropbox_found:
-                dropbox_found.add(str(fallback))
-                locations.append({"label": f"Dropbox ({fallback.name})",
-                                  "path": str(fallback), "type": "dropbox"})
+        for _root in _search_roots:
+            for fallback in _root.glob("Dropbox*"):
+                if fallback.is_dir() and str(fallback) not in dropbox_found:
+                    dropbox_found.add(str(fallback))
+                    locations.append({"label": "Dropbox",
+                                      "path": str(fallback), "type": "dropbox"})
 
     # Google Drive — registry or common path
     try:
