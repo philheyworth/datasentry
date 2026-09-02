@@ -6,7 +6,7 @@ WORKDIR /app
 # build-essential just in case the binary wheel falls back to a source build.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libpq5 \
-        msitools \
+        wixl \
     && rm -rf /var/lib/apt/lists/*
 
 COPY backend/requirements.txt .
