@@ -78,6 +78,25 @@ body{font-family:'DM Sans',system-ui,sans-serif;font-size:14px;line-height:1.5;
 .nav-item.active{background:rgba(0,196,154,.12);color:var(--sidebar-act);}
 .nav-item.active .nav-icon{color:var(--sidebar-pip);}
 .nav-icon{width:16px;text-align:center;font-size:14px;flex-shrink:0;}
+/* Permissions panel */
+.perm-panel{background:var(--surface2);border:1px solid var(--border);border-radius:6px;
+  padding:14px 16px;margin-top:10px;display:none;}
+.perm-panel.open{display:block;}
+.perm-row{display:flex;align-items:center;justify-content:space-between;
+  padding:6px 0;border-bottom:1px solid var(--border);}
+.perm-row:last-child{border-bottom:none;}
+.perm-label{font-size:12.5px;color:var(--text);}
+.perm-sublabel{font-size:11px;color:var(--text3);margin-top:1px;}
+.toggle-wrap{position:relative;width:36px;height:20px;flex-shrink:0;}
+.toggle-wrap input{opacity:0;width:0;height:0;position:absolute;}
+.toggle-track{position:absolute;inset:0;background:var(--border);border-radius:10px;
+  cursor:pointer;transition:background .2s;}
+.toggle-wrap input:checked+.toggle-track{background:var(--accent);}
+.toggle-thumb{position:absolute;top:3px;left:3px;width:14px;height:14px;
+  background:#fff;border-radius:50%;transition:transform .2s;pointer-events:none;}
+.toggle-wrap input:checked~.toggle-thumb{transform:translateX(16px);}
+.perm-group-hdr{font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--text3);padding:8px 0 4px;margin-top:4px;}
 .nav-badge{margin-left:auto;background:rgba(239,68,68,.25);color:#f87171;
   font-size:10px;font-weight:600;padding:1px 6px;border-radius:10px;
   font-family:'JetBrains Mono',monospace;}
@@ -473,41 +492,41 @@ tr:hover td{background:var(--surface2);}
     </div>
   </div>
   <div class="nav-section">Overview</div>
-  <div class="nav-item active" onclick="showSection('overview',this)">
+  <div class="nav-item active" data-perm="overview" onclick="showSection('overview',this)">
     <span class="nav-icon">⬡</span> Dashboard
   </div>
-  <div class="nav-section" id="nav-section-customers">Customers</div>
-  <div class="nav-item" id="nav-all-customers" onclick="showSection('customers',this)">
+  <div class="nav-section" id="nav-section-customers" data-perm-section="customers">Customers</div>
+  <div class="nav-item" id="nav-all-customers" data-perm="customers" onclick="showSection('customers',this)">
     <span class="nav-icon">◈</span> <span id="nav-all-customers-label">All Customers</span>
   </div>
   <div id="customer-nav-items"></div>
-  <div class="nav-section" id="nav-section-fleet">Fleet</div>
-  <div class="nav-item" id="nav-all-machines" onclick="showSection('machines',this)">
+  <div class="nav-section" id="nav-section-fleet" data-perm-section="machines">Fleet</div>
+  <div class="nav-item" id="nav-all-machines" data-perm="machines" onclick="showSection('machines',this)">
     <span class="nav-icon">▣</span> <span id="nav-machines-label">All Machines</span>
   </div>
-  <div class="nav-item" onclick="showSection('pii',this)">
+  <div class="nav-item" data-perm="pii" onclick="showSection('pii',this)">
     <span class="nav-icon">⚠</span> PII Findings
     <span class="nav-badge" id="pii-badge">—</span>
   </div>
-  <div class="nav-item" onclick="showSection('locations',this)">
+  <div class="nav-item" data-perm="locations" onclick="showSection('locations',this)">
     <span class="nav-icon">◎</span> Storage Map
   </div>
-  <div class="nav-item" id="nav-datamap" onclick="showSection('datamap',this)">
+  <div class="nav-item" id="nav-datamap" data-perm="datamap" onclick="showSection('datamap',this)">
     <span class="nav-icon">⊞</span> Data Map
     <span class="nav-badge" id="datamap-badge" style="display:none;background:rgba(59,130,246,.25);color:#60A5FA;"></span>
   </div>
-  <div class="nav-item" onclick="showSection('compliance',this)">
+  <div class="nav-item" data-perm="compliance" onclick="showSection('compliance',this)">
     <span class="nav-icon">◉</span> Compliance
   </div>
   <div class="nav-section" id="admin-nav-section" style="display:none;">Admin</div>
   <div class="nav-item" id="nav-add-customer" style="display:none;" onclick="showSection('add-customer',this)">
     <span class="nav-icon">＋</span> Add Customer
   </div>
-  <div class="nav-item" id="nav-download-scanner" style="display:none;" onclick="showSection('download-scanner',this)">
+  <div class="nav-item" id="nav-download-scanner" data-perm="download-scanner" style="display:none;" onclick="showSection('download-scanner',this)">
     <span class="nav-icon">⬇</span> Download Scanner
   </div>
   <div class="nav-section">Settings</div>
-  <div class="nav-item" onclick="showSection('api',this)">
+  <div class="nav-item" data-perm="api" onclick="showSection('api',this)">
     <span class="nav-icon">⊡</span> API / Config
   </div>
   <div class="nav-item" onclick="showSection('account',this)">
@@ -971,7 +990,7 @@ tr:hover td{background:var(--surface2);}
         </div>
       </div>
 
-      <div class="card" id="admin-users-card" style="max-width:500px;display:none;">
+      <div class="card" id="admin-users-card" style="max-width:680px;display:none;">
         <div class="card-header"><span class="card-title">Users</span>
           <button class="btn btn-primary btn-sm" onclick="toggleAddUser()">+ Add User</button>
         </div>
@@ -1049,6 +1068,19 @@ const PII_COLORS=["#EF4444","#F59E0B","#8B5CF6","#EC4899","#06B6D4",
   "#10B981","#F97316","#6366F1","#14B8A6","#84CC16","#A855F7","#F43F5E","#0EA5E9"];
 const CUST_COLORS={"acme-corp":"#0D6EFD","globex-ltd":"#198754",
   "initech-uk":"#6F42C1","umbrella-group":"#DC3545"};
+
+// Sections that can be permission-restricted (key → display label + sublabel)
+const NAV_SECTIONS=[
+  {key:"overview",   label:"Overview",         sub:"Dashboard summary & headline stats",  group:"Main"},
+  {key:"customers",  label:"Customers",         sub:"Customer list and per-customer views", group:"Main"},
+  {key:"machines",   label:"Fleet / Machines",  sub:"All machine scans and details",        group:"Main"},
+  {key:"pii",        label:"PII Findings",      sub:"PII breakdown, ICO categories, hotspots", group:"Data"},
+  {key:"locations",  label:"Storage Map",       sub:"Where data lives across the fleet",   group:"Data"},
+  {key:"datamap",    label:"Data Map",          sub:"Inventory browser and file search",   group:"Data"},
+  {key:"compliance", label:"Compliance",        sub:"GDPR/DPA status and risk scores",     group:"Data"},
+  {key:"download-scanner", label:"Download Scanner", sub:"Scanner package and instructions", group:"Admin"},
+  {key:"api",        label:"API Keys",          sub:"Manage scanner API credentials",      group:"Admin"},
+];
 
 // ── HELPERS ─────────────────────────────────────────────
 function fmtSize(b){if(!b)return"0 B";const u=["B","KB","MB","GB","TB"];
@@ -1790,6 +1822,8 @@ async function loadLiveData(){
     if(invR&&invR.ok){const inv=await invR.json();LIVE.machine_locations=inv.machine_locations||[];}else{LIVE.machine_locations=[];}
     LIVE.generated_at=new Date().toISOString();
     showUserBadge();
+    // Apply per-user section permissions
+    applyPermissions(DS_USER);
     // Show download card only for customer-scoped users (not global admin)
     if(DS_USER&&DS_USER.customer_id){
       document.getElementById("cust-download-card").style.display="flex";
@@ -1880,6 +1914,48 @@ function toggleAddUser(){
   const f=document.getElementById("add-user-form");
   f.style.display=f.style.display==="none"?"block":"none";
 }
+function buildPermPanel(userId, perms, userRole){
+  // Admins always have full access — no point restricting
+  if(userRole==="admin") return `<div class="perm-panel" id="perm-panel-${userId}">
+    <div style="color:var(--text2);font-size:12.5px;font-style:italic;">Admin users have full access to all sections.</div></div>`;
+  const p = perms || {};
+  // Group sections
+  const groups={};
+  for(const s of NAV_SECTIONS){
+    if(!groups[s.group]) groups[s.group]=[];
+    groups[s.group].push(s);
+  }
+  const allowed = s => p[s.key] !== false; // default: all allowed
+  let html=`<div class="perm-panel" id="perm-panel-${userId}">
+    <div style="font-size:12px;color:var(--text3);margin-bottom:10px;">Toggle which sections this user can see. Changes take effect on their next login.</div>`;
+  for(const [grp, sections] of Object.entries(groups)){
+    html+=`<div class="perm-group-hdr">${grp}</div>`;
+    for(const s of sections){
+      const on=allowed(s);
+      html+=`<div class="perm-row">
+        <div><div class="perm-label">${s.label}</div><div class="perm-sublabel">${s.sub}</div></div>
+        <label class="toggle-wrap">
+          <input type="checkbox" id="perm-${userId}-${s.key}" ${on?"checked":""}>
+          <div class="toggle-track"></div>
+          <div class="toggle-thumb"></div>
+        </label>
+      </div>`;
+    }
+  }
+  html+=`<div style="display:flex;gap:8px;margin-top:14px;">
+    <button onclick="savePermissions(${userId})"
+      style="background:var(--accent);color:#000;border:none;border-radius:4px;padding:5px 14px;font-size:12px;font-weight:600;cursor:pointer;">
+      Save Permissions
+    </button>
+    <button onclick="resetPermissions(${userId})"
+      style="background:transparent;border:1px solid var(--border);color:var(--text2);border-radius:4px;padding:5px 14px;font-size:12px;cursor:pointer;">
+      Reset to Full Access
+    </button>
+    <span id="perm-status-${userId}" style="font-size:12px;color:var(--accent);align-self:center;"></span>
+  </div></div>`;
+  return html;
+}
+
 async function loadUsers(){
   if(!DS_USER||DS_USER.role!=="admin")return;
   document.getElementById("admin-users-card").style.display="block";
@@ -1889,25 +1965,103 @@ async function loadUsers(){
     const data=await r.json();
     const list=Array.isArray(data)?data:[];
     const rows=list.map(u=>`
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);">
-        <div>
-          <div style="font-weight:600;">${escHtml(u.name||u.email)}</div>
-          <div style="font-size:11px;color:var(--text2);">${escHtml(u.email)} · <span style="text-transform:capitalize;">${escHtml(u.role)}</span>${u.customer_name?' · '+escHtml(u.customer_name):''}</div>
+      <div style="border-bottom:1px solid var(--border);padding:12px 0;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <div>
+            <div style="font-weight:600;">${escHtml(u.name||u.email)}</div>
+            <div style="font-size:11px;color:var(--text2);">${escHtml(u.email)} · <span style="text-transform:capitalize;">${escHtml(u.role)}</span>${u.customer_name?' · '+escHtml(u.customer_name):''}</div>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
+            <button onclick="togglePermPanel(${u.id})"
+              style="background:transparent;border:1px solid var(--border);color:var(--text2);border-radius:4px;padding:3px 10px;font-size:11px;cursor:pointer;">
+              ⚙ Permissions
+            </button>
+            <button onclick="adminResetLink(${u.id},'${escHtml(u.email)}')"
+              style="background:transparent;border:1px solid var(--accent);color:var(--accent);border-radius:4px;padding:3px 10px;font-size:11px;cursor:pointer;">
+              Reset pwd
+            </button>
+            <button onclick="deleteUser(${u.id},'${escHtml(u.email)}')"
+              style="background:transparent;border:1px solid var(--risk);color:var(--risk);border-radius:4px;padding:3px 10px;font-size:11px;cursor:pointer;">
+              Remove
+            </button>
+          </div>
         </div>
-        <div style="display:flex;gap:6px;">
-          <button onclick="adminResetLink(${u.id},'${escHtml(u.email)}')"
-            style="background:transparent;border:1px solid var(--accent);color:var(--accent);border-radius:4px;padding:3px 10px;font-size:11px;cursor:pointer;">
-            Reset pwd
-          </button>
-          <button onclick="deleteUser(${u.id},'${escHtml(u.email)}')"
-            style="background:transparent;border:1px solid var(--risk);color:var(--risk);border-radius:4px;padding:3px 10px;font-size:11px;cursor:pointer;">
-            Remove
-          </button>
-        </div>
+        ${buildPermPanel(u.id, u.permissions, u.role)}
       </div>`).join("");
     document.getElementById("users-list").innerHTML=rows||"<div style='color:var(--text2);font-size:13px;'>No additional users yet.</div>";
   }catch(e){document.getElementById("users-list").textContent="Error: "+e.message;}
 }
+
+function togglePermPanel(userId){
+  const panel=document.getElementById("perm-panel-"+userId);
+  if(panel) panel.classList.toggle("open");
+}
+
+async function savePermissions(userId){
+  const perms={};
+  for(const s of NAV_SECTIONS){
+    const el=document.getElementById(`perm-${userId}-${s.key}`);
+    if(el) perms[s.key]=el.checked;
+  }
+  const statusEl=document.getElementById("perm-status-"+userId);
+  try{
+    const r=await api("/auth/users/"+userId+"/permissions",{
+      method:"PATCH",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({permissions:perms})
+    });
+    if(!r.ok){const e=await r.json().catch(()=>({}));throw new Error(e.detail||r.statusText);}
+    if(statusEl){statusEl.textContent="Saved ✓";setTimeout(()=>{statusEl.textContent="";},2500);}
+  }catch(e){
+    if(statusEl) statusEl.style.color="var(--risk)";
+    if(statusEl) statusEl.textContent="Error: "+e.message;
+  }
+}
+
+async function resetPermissions(userId){
+  const statusEl=document.getElementById("perm-status-"+userId);
+  try{
+    const r=await api("/auth/users/"+userId+"/permissions",{
+      method:"PATCH",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({permissions:null})
+    });
+    if(!r.ok){const e=await r.json().catch(()=>({}));throw new Error(e.detail||r.statusText);}
+    // Uncheck all toggles back to "on"
+    for(const s of NAV_SECTIONS){
+      const el=document.getElementById(`perm-${userId}-${s.key}`);
+      if(el) el.checked=true;
+    }
+    if(statusEl){statusEl.style.color="var(--accent)";statusEl.textContent="Reset to full access ✓";setTimeout(()=>{statusEl.textContent="";},2500);}
+  }catch(e){
+    if(statusEl){statusEl.style.color="var(--risk)";statusEl.textContent="Error: "+e.message;}
+  }
+}
+function applyPermissions(user){
+  // Admins always see everything; null permissions = full access
+  if(!user || user.role==="admin") return;
+  const perms = user.permissions || {};
+  // Hide nav items whose key is explicitly set to false
+  document.querySelectorAll("[data-perm]").forEach(el=>{
+    const key = el.dataset.perm;
+    if(perms[key]===false) el.style.display="none";
+  });
+  // Hide section header labels if ALL their managed nav items are hidden
+  document.querySelectorAll("[data-perm-section]").forEach(hdr=>{
+    const keys = hdr.dataset.permSection.split("|");
+    const items = keys.flatMap(k=>[...document.querySelectorAll(`[data-perm="${k}"]`)]);
+    if(items.length && items.every(el=>el.style.display==="none"))
+      hdr.style.display="none";
+  });
+  // If the currently active section is now hidden, navigate to overview or first visible
+  const active = document.querySelector(".nav-link.active[data-perm]");
+  if(active && active.style.display==="none"){
+    const first = document.querySelector("[data-perm]:not([style*='display: none']):not([style*='display:none'])");
+    const targetKey = first ? first.dataset.perm : "overview";
+    showSection(targetKey);
+  }
+}
+
 async function deleteUser(id,email){
   if(!confirm("Remove user "+email+"?"))return;
   try{
