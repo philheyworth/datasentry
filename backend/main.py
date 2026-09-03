@@ -342,6 +342,13 @@ def init_db():
     """)
     raw.commit()
 
+    # ── Migration: add permissions column to users ────────────────────────────
+    cur.execute("""
+        ALTER TABLE users
+        ADD COLUMN IF NOT EXISTS permissions TEXT DEFAULT NULL
+    """)
+    raw.commit()
+
     # ── Migration: fix customer users who were wrongly given role='admin' ─────
     # Any user with a non-empty customer_id and role='admin' is a customer portal
     # user, not the DataSentry super-admin.  Correct their role to 'customer'.
@@ -481,7 +488,7 @@ def login(body: LoginRequest, db: _PgConn = Depends(get_db)):
     if not HAS_AUTH:
         raise HTTPException(status_code=503, detail="Auth libraries not installed")
     row = db.execute(
-        "SELECT id, email, name, password_hash, customer_id, customer_name, role, active "
+        "SELECT id, email, name, password_hash, customer_id, customer_name, role, active, permissions "
         "FROM users WHERE email = %s",
         (body.email,)
     ).fetchone()
@@ -490,6 +497,12 @@ def login(body: LoginRequest, db: _PgConn = Depends(get_db)):
     if not _verify_password(body.password, row["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid email or password")
     token = make_token(row["id"], row["email"], row["customer_id"], row["role"])
+    perms = None
+    if row["permissions"]:
+        try:
+            perms = json.loads(row["permissions"])
+        except Exception:
+            pass
     return {
         "access_token": token,
         "token_type":   "bearer",
@@ -501,6 +514,7 @@ def login(body: LoginRequest, db: _PgConn = Depends(get_db)):
             "customer_id":   row["customer_id"],
             "customer_name": row["customer_name"],
             "role":          row["role"],
+            "permissions":   perms,
         }
     }
 
@@ -555,9 +569,37 @@ def create_user(body: CreateUserRequest, payload: dict = Depends(require_admin),
 @app.get("/auth/users")
 def list_users(payload: dict = Depends(require_admin), db: _PgConn = Depends(get_db)):
     rows = db.execute(
-        "SELECT id, email, name, customer_id, customer_name, role, created_at, active FROM users"
+        "SELECT id, email, name, customer_id, customer_name, role, created_at, active, permissions FROM users"
     ).fetchall()
-    return [dict(r) for r in rows]
+    result = []
+    for r in rows:
+        d = dict(r)
+        if d.get("permissions"):
+            try:
+                d["permissions"] = json.loads(d["permissions"])
+            except Exception:
+                d["permissions"] = None
+        result.append(d)
+    return result
+
+
+class PermissionsRequest(BaseModel):
+    permissions: Optional[dict] = None
+
+
+@app.patch("/auth/users/{user_id}/permissions", status_code=200)
+def update_permissions(user_id: int, body: PermissionsRequest,
+                       payload: dict = Depends(require_admin),
+                       db: _PgConn = Depends(get_db)):
+    perms_json = json.dumps(body.permissions) if body.permissions is not None else None
+    result = db.execute(
+        "UPDATE users SET permissions = %s WHERE id = %s",
+        (perms_json, user_id)
+    )
+    db.commit()
+    if result.rowcount == 0:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"user_id": user_id, "permissions": body.permissions}
 
 
 @app.delete("/auth/users/{user_id}", status_code=204)
