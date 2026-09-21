@@ -205,143 +205,184 @@ FILENAME_KEYWORDS: dict[str, tuple[int, str, str, list[str]]] = {
 # STORAGE LOCATION DISCOVERY
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _get_windows_fixed_drives() -> list[str]:
+    """Return a list of fixed (local) drive root paths, e.g. ['C:\\', 'D:\\']."""
+    drives = []
+    try:
+        # GetLogicalDriveStringsW fills a buffer with null-separated drive strings
+        buf = ctypes.create_unicode_buffer(256)
+        ctypes.windll.kernel32.GetLogicalDriveStringsW(len(buf), buf)
+        raw = buf.value
+        # Split on null bytes to get individual drive strings
+        for drive in raw.replace("\x00", " ").split():
+            drive = drive.strip()
+            if not drive:
+                continue
+            # DRIVE_FIXED = 3; skip network (4), removable (2), cdrom (5), etc.
+            dtype = ctypes.windll.kernel32.GetDriveTypeW(drive)
+            if dtype == 3:  # DRIVE_FIXED
+                drives.append(drive)
+    except Exception:
+        # Fallback: check common drive letters
+        for letter in "CDEFGHIJKLMNOPQRSTUVWXYZ":
+            p = Path(f"{letter}:\\")
+            if p.exists():
+                try:
+                    dtype = ctypes.windll.kernel32.GetDriveTypeW(str(p))
+                    if dtype == 3:
+                        drives.append(str(p))
+                except Exception:
+                    drives.append(str(p))
+    return drives
+
+
 def get_windows_locations() -> list[dict]:
-    """Discover all relevant storage locations on Windows."""
+    """Discover all relevant storage locations on Windows.
+
+    Covers:
+      - Every fixed local drive root (C:\\, D:\\, E:\\, …)
+      - All user profile sub-folders (Documents, Desktop, Downloads, etc.)
+        for EVERY user account on the machine, not just the current one
+      - Common server data share paths on each drive
+      - Cloud sync folders: OneDrive (personal + Business), Dropbox, Google Drive, Box
+      - Mapped network drives
+    """
     locations = []
     home = Path.home()
+    system_drive = os.environ.get("SystemDrive", "C:").rstrip("\\") + "\\"
 
-    # Standard local folders
-    local_dirs = [
-        ("My Documents", home / "Documents"),
-        ("Desktop",      home / "Desktop"),
-        ("Downloads",    home / "Downloads"),
-        ("Pictures",     home / "Pictures"),
-        ("Videos",       home / "Videos"),
-    ]
-    for label, path in local_dirs:
-        if path.exists():
-            locations.append({"label": label, "path": str(path), "type": "local"})
+    # ── 1. All fixed local drives ────────────────────────────────────────────
+    seen_paths: set[str] = set()
 
-    # OneDrive personal
-    onedrive_personal = home / "OneDrive"
-    if onedrive_personal.exists():
-        locations.append({"label": "OneDrive Personal", "path": str(onedrive_personal), "type": "onedrive"})
+    def _add(label: str, path, loc_type: str, **extra):
+        """Add a location only if not already queued."""
+        p = str(Path(path)).lower().rstrip("\\")
+        if p not in seen_paths and Path(path).exists():
+            seen_paths.add(p)
+            entry = {"label": label, "path": str(path), "type": loc_type}
+            entry.update(extra)
+            locations.append(entry)
 
-    # OneDrive for Business / SharePoint (multiple tenants)
-    # Search both the current home AND every other user profile on the machine,
-    # because the scanner may run as SYSTEM or Administrator while the signed-in
-    # OneDrive account belongs to a different Windows user profile.
-    _od_seen: set[str] = set()
-    _search_roots: list[Path] = [home]
+    all_drives = _get_windows_fixed_drives()
+
+    for drive in all_drives:
+        drive_letter = drive.rstrip("\\")  # e.g. "C:"
+        drive_label = f"Local Drive ({drive_letter})"
+
+        # Add the drive root so nothing is missed
+        _add(drive_label, drive, "local")
+
+        # Common server/workgroup data share paths on this drive
+        for share_dir in ["Data", "Shares", "Share", "SharedData", "Company",
+                          "Files", "Clients", "Archive", "Backup", "Accounts",
+                          "Finance", "HR", "Legal", "Projects", "Users"]:
+            candidate = Path(drive) / share_dir
+            _add(f"{drive_letter}\\{share_dir}", candidate, "local")
+
+    # ── 2. All user profiles – Documents, Desktop, Downloads, etc. ──────────
+    users_root = Path(system_drive) / "Users"
+    skip_profiles = {"Public", "Default", "Default User", "All Users",
+                     "desktop.ini", "NetworkService", "LocalService"}
+
+    profile_dirs = [("Documents", "local"), ("Desktop", "local"),
+                    ("Downloads", "local"), ("Pictures", "local"),
+                    ("Videos", "local"), ("AppData\\Local\\Temp", "local")]
+
     try:
-        users_dir = Path(os.environ.get("SystemDrive", "C:") + "\\Users")
-        if users_dir.exists():
-            _search_roots += [p for p in users_dir.iterdir()
-                              if p.is_dir() and p.name not in ("Public", "Default", "Default User",
-                                                                "All Users", "desktop.ini")]
+        all_profiles = [p for p in users_root.iterdir()
+                        if p.is_dir() and p.name not in skip_profiles]
     except Exception:
-        pass
-    for _root in _search_roots:
+        all_profiles = [home]
+
+    for profile in all_profiles:
+        user_label = profile.name
+        # Add the profile root
+        _add(f"User Profile ({user_label})", profile, "local")
+        # Add standard sub-folders
+        for subfolder, loc_type in profile_dirs:
+            candidate = profile / subfolder
+            label = f"{subfolder.split(chr(92))[-1]} ({user_label})"
+            _add(label, candidate, loc_type)
+
+    # ── 3. OneDrive personal ─────────────────────────────────────────────────
+    onedrive_personal = home / "OneDrive"
+    _add("OneDrive Personal", onedrive_personal, "onedrive")
+
+    # ── 4. OneDrive for Business / SharePoint (search all user profiles) ───────
+    for _root in all_profiles:
         for p in _root.glob("OneDrive - *"):
-            if p.is_dir() and str(p) not in _od_seen:
-                _od_seen.add(str(p))
+            if p.is_dir():
                 tenant = p.name.replace("OneDrive - ", "")
-                locations.append({
-                    "label": f"OneDrive for Business ({tenant})",
-                    "path": str(p),
-                    "type": "onedrive_business"
-                })
-        # Also catch OneDrive Personal under other user profiles
+                _add(f"OneDrive for Business ({tenant})", p, "onedrive_business")
+        # OneDrive Personal under other profiles
         od_personal = _root / "OneDrive"
-        if od_personal.exists() and od_personal.is_dir() and str(od_personal) not in _od_seen:
-            _od_seen.add(str(od_personal))
-            if _root != home:  # already added above for home user
-                locations.append({"label": "OneDrive Personal",
-                                  "path": str(od_personal), "type": "onedrive"})
+        if od_personal != onedrive_personal:
+            _add("OneDrive Personal", od_personal, "onedrive")
 
-    # Dropbox — search ALL user profiles for info.json, then fall back to glob.
-    # Must search every profile because the scanner may run as SYSTEM/Administrator
-    # while Dropbox belongs to a different Windows user (e.g. Phil).
-    dropbox_found: set[str] = set()
-
+    # ── 5. Dropbox — search all user profiles ───────────────────────────────
     def _add_dropbox_from_info(info_path: Path) -> None:
-        """Parse a Dropbox info.json and register any valid paths."""
         try:
             with open(info_path) as f:
                 db_config = json.load(f)
             for account_type in ("personal", "business"):
                 if account_type in db_config:
                     db_path = Path(db_config[account_type]["path"])
-                    if db_path.exists() and str(db_path) not in dropbox_found:
-                        dropbox_found.add(str(db_path))
-                        locations.append({
-                            "label": f"Dropbox ({account_type.capitalize()})",
-                            "path": str(db_path),
-                            "type": "dropbox"
-                        })
+                    _add(f"Dropbox ({account_type.capitalize()})", db_path, "dropbox")
         except Exception:
             pass
 
-    # 1. Current user's APPDATA\Dropbox\info.json
     _cur_appdata = Path(os.environ.get("APPDATA", ""))
     if _cur_appdata:
         _add_dropbox_from_info(_cur_appdata / "Dropbox" / "info.json")
 
-    # 2. Every other user profile's AppData\Roaming\Dropbox\info.json
-    for _root in _search_roots:
-        if _root == home:
-            continue  # already handled via APPDATA above
-        _add_dropbox_from_info(
-            _root / "AppData" / "Roaming" / "Dropbox" / "info.json"
-        )
+    for _root in all_profiles:
+        _add_dropbox_from_info(_root / "AppData" / "Roaming" / "Dropbox" / "info.json")
+        for fallback in _root.glob("Dropbox*"):
+            if fallback.is_dir():
+                _add("Dropbox", fallback, "dropbox")
 
-    # 3. Glob fallback across all user profiles: catch ~/Dropbox* folders
-    if not dropbox_found:
-        for _root in _search_roots:
-            for fallback in _root.glob("Dropbox*"):
-                if fallback.is_dir() and str(fallback) not in dropbox_found:
-                    dropbox_found.add(str(fallback))
-                    locations.append({"label": "Dropbox",
-                                      "path": str(fallback), "type": "dropbox"})
-
-    # Google Drive — registry or common path
+    # ── 6. Google Drive ──────────────────────────────────────────────────────
     try:
         import winreg
-        key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,
-                             r"SOFTWARE\Google\DriveFS")
+        key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Google\DriveFS")
         gdrive_path = winreg.QueryValueEx(key, "DefaultMountPoint")[0]
-        if Path(gdrive_path).exists():
-            locations.append({"label": "Google Drive", "path": gdrive_path, "type": "google_drive"})
+        _add("Google Drive", gdrive_path, "google_drive")
         winreg.CloseKey(key)
     except Exception:
-        for fallback in [home / "Google Drive", home / "My Drive"]:
-            if fallback.exists():
-                locations.append({"label": "Google Drive", "path": str(fallback), "type": "google_drive"})
+        for _root in all_profiles:
+            for fallback in [_root / "Google Drive", _root / "My Drive"]:
+                _add("Google Drive", fallback, "google_drive")
 
-    # Box Drive
-    box_path = home / "Box"
-    if box_path.exists():
-        locations.append({"label": "Box Drive", "path": str(box_path), "type": "box"})
+    # ── 7. Box Drive ─────────────────────────────────────────────────────────
+    for _root in all_profiles:
+        _add("Box Drive", _root / "Box", "box")
 
-    # Mapped network drives (Windows only)
-    if sys.platform == "win32":
-        try:
-            import subprocess
-            result = subprocess.run(["net", "use"], capture_output=True, text=True, timeout=10)
-            for line in result.stdout.splitlines():
-                # Parse "OK   X:   \\server\share"
-                parts = line.split()
-                if len(parts) >= 3 and ":" in parts[1] and parts[2].startswith("\\\\"):
-                    drive_letter = parts[1]
-                    unc_path = parts[2]
-                    locations.append({
-                        "label": f"Network Drive {drive_letter} ({unc_path})",
-                        "path": drive_letter + "\\",
-                        "type": "network_drive",
-                        "unc_path": unc_path
-                    })
-        except Exception:
-            pass
+    # ── 8. Mapped network drives ─────────────────────────────────────────────
+    try:
+        import subprocess
+        result = subprocess.run(["net", "use"], capture_output=True, text=True, timeout=10)
+        for line in result.stdout.splitlines():
+            parts = line.split()
+            if len(parts) >= 3 and ":" in parts[1] and parts[2].startswith("\\\\"):
+                drive_letter = parts[1]
+                unc_path = parts[2]
+                _add(f"Network Drive {drive_letter} ({unc_path})",
+                     drive_letter + "\\", "network_drive", unc_path=unc_path)
+    except Exception:
+        pass
+
+    # ── 9. Removable / USB drives ────────────────────────────────────────────
+    try:
+        for letter in "DEFGHIJKLMNOPQRSTUVWXYZ":
+            p = Path(f"{letter}:\\")
+            try:
+                dtype = ctypes.windll.kernel32.GetDriveTypeW(str(p))
+                if dtype == 2 and p.exists():  # DRIVE_REMOVABLE
+                    _add(f"Removable Drive ({letter}:)", p, "local")
+            except Exception:
+                pass
+    except Exception:
+        pass
 
     return locations
 
@@ -427,13 +468,54 @@ def discover_storage_locations() -> list[dict]:
     elif sys.platform == "darwin":
         return get_macos_locations()
     else:
-        # Linux fallback
+        # Linux / server fallback
         home = Path.home()
         locs = []
-        for label, subdir in [("Home", home), ("Documents", home / "Documents"),
-                               ("Desktop", home / "Desktop"), ("Downloads", home / "Downloads")]:
-            if subdir.exists():
-                locs.append({"label": label, "path": str(subdir), "type": "local"})
+        seen: set[str] = set()
+
+        def _ladd(label: str, path):
+            p = str(path)
+            if p not in seen and Path(p).exists():
+                seen.add(p)
+                locs.append({"label": label, "path": p, "type": "local"})
+
+        # All user home directories
+        for user_home in Path("/home").iterdir() if Path("/home").exists() else []:
+            if user_home.is_dir():
+                uname = user_home.name
+                _ladd(f"Home ({uname})", user_home)
+                for sub in ["Documents", "Desktop", "Downloads", "Pictures", "Videos"]:
+                    _ladd(f"{sub} ({uname})", user_home / sub)
+
+        # Current user home (covers root or non-/home paths)
+        _ladd("Home", home)
+        for sub in ["Documents", "Desktop", "Downloads"]:
+            _ladd(sub, home / sub)
+
+        # Common server data paths
+        for srv_path in ["/srv", "/var/data", "/data", "/opt/data",
+                         "/mnt", "/media", "/shares", "/export",
+                         "/var/lib/samba/shares"]:
+            p = Path(srv_path)
+            if p.exists():
+                _ladd(srv_path, p)
+                try:
+                    for child in p.iterdir():
+                        if child.is_dir():
+                            _ladd(str(child), child)
+                except Exception:
+                    pass
+
+        # NFS / CIFS mounts from /proc/mounts
+        try:
+            with open("/proc/mounts") as f:
+                for line in f:
+                    parts = line.split()
+                    if len(parts) >= 3 and parts[2] in ("cifs", "nfs", "nfs4", "smb2"):
+                        _ladd(f"Network Mount ({parts[1]})", parts[1])
+        except Exception:
+            pass
+
         return locs
 
 # ─────────────────────────────────────────────────────────────────────────────
