@@ -6,7 +6,7 @@ Environment variables (Railway sets DATABASE_URL automatically when you add
 the PostgreSQL plugin):
     DATABASE_URL             PostgreSQL DSN  (e.g. postgresql://user:pass@host/db)
     DATASENTRY_JWT_SECRET    Secret for signing JWTs  (auto-generated if unset)
-    DATASENTRY_MASTER_KEY    Legacy master key for direct API-key management
+    DATASENTRY_MASTER_KEY    Legacy master key for /api/keys (min 32 chars; routes disabled if unset)
     DATASENTRY_CORS_ORIGINS  Comma-separated CORS origins (default: *)
     DATASENTRY_ADMIN_PASSWORD  Force admin dashboard password
     PORT                     HTTP port (Railway sets this automatically)
@@ -53,8 +53,14 @@ if not DATABASE_URL:
         "Add a PostgreSQL plugin to your Railway project — it sets DATABASE_URL automatically."
     )
 
-MASTER_API_KEY  = os.environ.get("DATASENTRY_MASTER_KEY", "changeme-set-in-env")
-ALLOWED_ORIGINS = os.environ.get("DATASENTRY_CORS_ORIGINS", "*").split(",")
+# Master key is only honoured when explicitly set to a long value in the environment.
+# An unset or short key disables every master-key route (no public default exists).
+MASTER_API_KEY  = os.environ.get("DATASENTRY_MASTER_KEY", "").strip()
+MASTER_KEY_ENABLED = len(MASTER_API_KEY) >= 32
+if MASTER_API_KEY and not MASTER_KEY_ENABLED:
+    print("WARNING: DATASENTRY_MASTER_KEY is shorter than 32 characters — master-key routes disabled.")
+ALLOWED_ORIGINS = [o.strip() for o in os.environ.get("DATASENTRY_CORS_ORIGINS", "*").split(",") if o.strip()]
+MIN_PASSWORD_LEN = 12
 JWT_ALGORITHM   = "HS256"
 JWT_EXPIRE_HRS  = 8
 
@@ -403,13 +409,66 @@ def require_user(payload: Optional[dict] = Depends(_bearer)):
 
 
 def require_admin(payload: dict = Depends(require_user)):
-    if payload.get("role") != "admin":
+    # Only the global DataSentry admin (role=admin with NO customer) may use admin routes.
+    # A customer-scoped account can never manage users, keys or other customers.
+    if payload.get("role") != "admin" or (payload.get("customer_id") or "").strip():
         raise HTTPException(status_code=403, detail="Admin access required")
     return payload
 
 
+def _master_key_ok(supplied: Optional[str]) -> bool:
+    if not MASTER_KEY_ENABLED or not supplied:
+        return False
+    return _hmac.compare_digest(supplied.encode(), MASTER_API_KEY.encode())
+
+
+def require_master_key(x_master_key: str = Header(...)):
+    if not _master_key_ok(x_master_key):
+        raise HTTPException(status_code=403, detail="Master key required")
+
+
+def _check_password_strength(pw: str) -> None:
+    if not pw or len(pw) < MIN_PASSWORD_LEN:
+        raise HTTPException(status_code=400,
+                            detail=f"Password must be at least {MIN_PASSWORD_LEN} characters.")
+
+
+# ── Login throttling (in-memory, per email and per IP) ──────────────────────
+import threading as _threading
+import time as _time
+
+_LOGIN_FAILS: dict[str, list[float]] = {}
+_LOGIN_LOCK = _threading.Lock()
+_LOGIN_WINDOW_SECS = 15 * 60
+_LOGIN_MAX_PER_EMAIL = 5
+_LOGIN_MAX_PER_IP = 20
+
+
+def _login_blocked(keys_limits: list[tuple[str, int]]) -> bool:
+    now = _time.time()
+    with _LOGIN_LOCK:
+        for key, limit in keys_limits:
+            recent = [t for t in _LOGIN_FAILS.get(key, []) if now - t < _LOGIN_WINDOW_SECS]
+            _LOGIN_FAILS[key] = recent
+            if len(recent) >= limit:
+                return True
+    return False
+
+
+def _login_record_fail(keys: list[str]) -> None:
+    now = _time.time()
+    with _LOGIN_LOCK:
+        for key in keys:
+            _LOGIN_FAILS.setdefault(key, []).append(now)
+
+
+def _login_clear(key: str) -> None:
+    with _LOGIN_LOCK:
+        _LOGIN_FAILS.pop(key, None)
+
+
 def require_api_key(x_api_key: str = Header(...), db: _PgConn = Depends(get_db)):
-    if x_api_key == MASTER_API_KEY and MASTER_API_KEY != "changeme-set-in-env":
+    if _master_key_ok(x_api_key):
         return {"customer_id": None, "customer_name": None}
     key_hash = hashlib.sha256(x_api_key.encode()).hexdigest()
     row = db.execute(
@@ -432,12 +491,16 @@ def _customer_filter(payload: Optional[dict]) -> Optional[str]:
     Customer portal users have role='customer', OR role='admin' WITH a real customer_id.
     """
     if not payload:
-        return None
+        raise HTTPException(status_code=401, detail="Login required")
     cust_id = (payload.get("customer_id") or "").strip() or None   # "" -> None
     role    = payload.get("role") or ""
     if role == "admin" and cust_id is None:
         return None   # true global DataSentry admin — no filter applied
-    return cust_id    # customer-scoped (may be None if user is misconfigured)
+    if cust_id is None:
+        # Misconfigured non-admin account with no customer: deny rather than
+        # falling through to "no filter" (which would expose every customer).
+        raise HTTPException(status_code=403, detail="Account is not linked to a customer")
+    return cust_id
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -449,10 +512,21 @@ app = FastAPI(title="DataSentry API", version="3.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=True,
+    # Auth uses Bearer tokens in a header, never cookies, so credentials are not needed.
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def _security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    return response
 
 
 @app.on_event("startup")
@@ -484,18 +558,27 @@ class ChangePasswordRequest(BaseModel):
 
 
 @app.post("/auth/login")
-def login(body: LoginRequest, db: _PgConn = Depends(get_db)):
+def login(body: LoginRequest, request: Request, db: _PgConn = Depends(get_db)):
     if not HAS_AUTH:
         raise HTTPException(status_code=503, detail="Auth libraries not installed")
+    email   = (body.email or "").strip().lower()
+    fwd     = request.headers.get("x-forwarded-for", "")
+    ip      = fwd.split(",")[0].strip() if fwd else (request.client.host if request.client else "?")
+    k_email, k_ip = f"e:{email}", f"i:{ip}"
+    if _login_blocked([(k_email, _LOGIN_MAX_PER_EMAIL), (k_ip, _LOGIN_MAX_PER_IP)]):
+        raise HTTPException(status_code=429,
+                            detail="Too many failed sign-in attempts. Try again in 15 minutes.")
     row = db.execute(
         "SELECT id, email, name, password_hash, customer_id, customer_name, role, active, permissions "
-        "FROM users WHERE email = %s",
-        (body.email,)
+        "FROM users WHERE lower(email) = %s",
+        (email,)
     ).fetchone()
-    if not row or not row["active"]:
+    if (not row or not row["active"]
+            or not _verify_password(body.password, row["password_hash"])):
+        _login_record_fail([k_email, k_ip])
+        print(f"[auth] failed login for {email!r} from {ip}", flush=True)
         raise HTTPException(status_code=401, detail="Invalid email or password")
-    if not _verify_password(body.password, row["password_hash"]):
-        raise HTTPException(status_code=401, detail="Invalid email or password")
+    _login_clear(k_email)
     token = make_token(row["id"], row["email"], row["customer_id"], row["role"])
     perms = None
     if row["permissions"]:
@@ -533,12 +616,22 @@ def me(payload: dict = Depends(require_user), db: _PgConn = Depends(get_db)):
 @app.post("/auth/users", status_code=201)
 def create_user(body: CreateUserRequest, payload: dict = Depends(require_admin),
                 db: _PgConn = Depends(get_db)):
+    _check_password_strength(body.password)
+    if body.role not in ("admin", "customer"):
+        raise HTTPException(status_code=400, detail="role must be 'admin' or 'customer'")
+    customer_id = (body.customer_id or "").strip() or None
+    # Anyone linked to a customer is a customer user — never a global admin.
+    role = "customer" if customer_id else body.role
+    if role == "customer" and not customer_id:
+        raise HTTPException(status_code=400, detail="customer users need a customer_id")
+    body.customer_id, body.role = customer_id, role
     pw_hash = _hash_password(body.password)
     try:
         db.execute(
             "INSERT INTO users (email, name, password_hash, customer_id, customer_name, role) "
             "VALUES (%s, %s, %s, %s, %s, %s)",
-            (body.email, body.name, pw_hash, body.customer_id, body.customer_name or "", body.role)
+            (body.email.strip().lower(), body.name, pw_hash, body.customer_id,
+             body.customer_name or "", body.role)
         )
         db.commit()
     except psycopg2.IntegrityError:
@@ -621,28 +714,23 @@ class ResetPasswordRequest(BaseModel):
     new_password: str
 
 @app.post("/auth/forgot-password")
-def forgot_password(body: ForgotPasswordRequest, db: _PgConn = Depends(get_db)):
-    """Generate a one-time reset token valid for 1 hour. Token returned in response
-    so the admin / requester can share the link (no email server required)."""
-    row = db.execute("SELECT id FROM users WHERE email = %s AND active = TRUE",
-                     (body.email.lower().strip(),)).fetchone()
-    if not row:
-        # Return success anyway to avoid email enumeration
-        return {"message": "If that email exists a reset link has been generated."}
-    raw_token = secrets.token_urlsafe(32)
-    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
-    db.execute(
-        "UPDATE users SET pw_reset_token=%s, pw_reset_expires=NOW() + INTERVAL '1 hour'"
-        " WHERE id=%s",
-        (token_hash, row["id"])
-    )
-    db.commit()
-    return {"reset_token": raw_token,
-            "message": "Copy the reset link and open it in a browser or send it to the user."}
+def forgot_password(body: ForgotPasswordRequest):
+    """Self-service reset is deliberately disabled.
+
+    SECURITY: this endpoint used to return the reset token to whoever asked,
+    which let anyone reset any account (including the admin) just by knowing
+    the email address. There is no email server, so a reset link can only be
+    issued by the DataSentry admin via /auth/admin-reset-link/{user_id}.
+    The global admin's own password is reset via DATASENTRY_ADMIN_PASSWORD.
+    Same response for every email, so it reveals nothing about which accounts exist.
+    """
+    return {"message": "Please contact your DataSentry administrator, "
+                       "who can send you a secure password reset link."}
 
 
 @app.post("/auth/reset-password")
 def reset_password(body: ResetPasswordRequest, db: _PgConn = Depends(get_db)):
+    _check_password_strength(body.new_password)
     token_hash = hashlib.sha256(body.token.encode()).hexdigest()
     row = db.execute(
         "SELECT id FROM users WHERE pw_reset_token=%s AND pw_reset_expires > NOW()",
@@ -662,10 +750,15 @@ def reset_password(body: ResetPasswordRequest, db: _PgConn = Depends(get_db)):
 @app.post("/auth/admin-reset-link/{user_id}")
 def admin_reset_link(user_id: int, payload: dict = Depends(require_admin),
                      db: _PgConn = Depends(get_db)):
-    """Admin generates a one-time password reset link for any user."""
-    row = db.execute("SELECT id, email FROM users WHERE id=%s", (user_id,)).fetchone()
+    """Admin generates a one-time password reset link for a customer user."""
+    row = db.execute("SELECT id, email, role, customer_id FROM users WHERE id=%s",
+                     (user_id,)).fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="User not found")
+    if row["role"] == "admin" and not (row["customer_id"] or "").strip():
+        raise HTTPException(status_code=400,
+                            detail="Admin passwords are reset via the DATASENTRY_ADMIN_PASSWORD "
+                                   "variable or Change Password, not reset links.")
     raw_token = secrets.token_urlsafe(32)
     token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
     db.execute(
@@ -685,6 +778,7 @@ def change_password(body: ChangePasswordRequest, payload: dict = Depends(require
     ).fetchone()
     if not row or not _verify_password(body.current_password, row["password_hash"]):
         raise HTTPException(status_code=401, detail="Current password incorrect")
+    _check_password_strength(body.new_password)
     db.execute(
         "UPDATE users SET password_hash = %s WHERE id = %s",
         (_hash_password(body.new_password), int(payload["sub"]))
@@ -883,12 +977,15 @@ def get_machine(machine_id: str, payload: dict = Depends(require_user),
 @app.get("/api/machines/{machine_id}/history")
 def get_machine_history(machine_id: str, payload: dict = Depends(require_user),
                         db: _PgConn = Depends(get_db)):
-    rows = db.execute("""
+    cust_filter = _customer_filter(payload)
+    where_cust  = "AND customer_id = %s" if cust_filter else ""
+    params      = (machine_id, cust_filter) if cust_filter else (machine_id,)
+    rows = db.execute(f"""
         SELECT id, total_files, total_size_bytes, total_pii_files,
                location_count, scanned_at, received_at
-        FROM scans WHERE machine_id = %s
+        FROM scans WHERE machine_id = %s {where_cust}
         ORDER BY received_at DESC LIMIT 20
-    """, (machine_id,)).fetchall()
+    """, params).fetchall()
     return [dict(r) for r in rows]
 
 
@@ -961,6 +1058,7 @@ def global_summary(customer_id: Optional[str] = None, payload: dict = Depends(re
 def pii_hotspots(limit: int = 20, payload: dict = Depends(require_user),
                  db: _PgConn = Depends(get_db)):
     cust_filter = _customer_filter(payload)
+    limit  = max(1, min(int(limit), 200))
     where  = "WHERE s.customer_id = %s" if cust_filter else ""
     params = (cust_filter, limit) if cust_filter else (limit,)
     rows = db.execute(f"""
@@ -993,6 +1091,10 @@ class NewCustomerRequest(BaseModel):
 def create_customer(body: NewCustomerRequest, payload: dict = Depends(require_admin),
                     db: _PgConn = Depends(get_db)):
     """Admin creates a new customer — portal user + scanner API key in one step."""
+    _check_password_strength(body.admin_password)
+    if not body.customer_id.strip():
+        raise HTTPException(status_code=400, detail="customer_id is required")
+    body.admin_email = body.admin_email.strip().lower()
     pw_hash = _hash_password(body.admin_password)
     try:
         db.execute(
@@ -1353,7 +1455,7 @@ class NewKeyRequest(BaseModel):
 @app.post("/api/keys", status_code=201)
 def create_api_key(body: NewKeyRequest, x_master_key: str = Header(...),
                    db: _PgConn = Depends(get_db)):
-    if x_master_key != MASTER_API_KEY:
+    if not _master_key_ok(x_master_key):
         raise HTTPException(status_code=403, detail="Master key required")
     raw_key  = "dsk_" + secrets.token_urlsafe(32)
     key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
@@ -1368,7 +1470,7 @@ def create_api_key(body: NewKeyRequest, x_master_key: str = Header(...),
 
 @app.get("/api/keys")
 def list_keys(x_master_key: str = Header(...), db: _PgConn = Depends(get_db)):
-    if x_master_key != MASTER_API_KEY:
+    if not _master_key_ok(x_master_key):
         raise HTTPException(status_code=403, detail="Master key required")
     rows = db.execute(
         "SELECT id, label, customer_id, created_at, active FROM api_keys"
@@ -1379,7 +1481,7 @@ def list_keys(x_master_key: str = Header(...), db: _PgConn = Depends(get_db)):
 @app.delete("/api/keys/{key_id}")
 def revoke_key(key_id: int, x_master_key: str = Header(...),
                db: _PgConn = Depends(get_db)):
-    if x_master_key != MASTER_API_KEY:
+    if not _master_key_ok(x_master_key):
         raise HTTPException(status_code=403, detail="Master key required")
     db.execute("UPDATE api_keys SET active = FALSE WHERE id = %s", (key_id,))
     db.commit()
@@ -1653,10 +1755,16 @@ def update_scan_job(job_id: int, body: UpdateScanJobRequest,
                     key_info: dict = Depends(require_api_key),
                     db: _PgConn = Depends(get_db)):
     row = db.execute(
-        "SELECT id, status FROM scan_jobs WHERE id = %s", (job_id,)
+        "SELECT id, status, customer_id FROM scan_jobs WHERE id = %s", (job_id,)
     ).fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Job not found")
+    key_cust = (key_info.get("customer_id") or "").strip()
+    if key_cust and (row["customer_id"] or "") != key_cust:
+        # A customer's scanner key may only update that customer's jobs.
+        raise HTTPException(status_code=404, detail="Job not found")
+    if body.status and body.status not in ("pending", "running", "completed", "failed"):
+        raise HTTPException(status_code=400, detail="Invalid status")
 
     updates: list[str] = []
     params: list = []
