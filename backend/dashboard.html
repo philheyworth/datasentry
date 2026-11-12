@@ -420,16 +420,7 @@ tr:hover td{background:var(--surface2);}
     <!-- FORGOT PASSWORD PANEL -->
     <div class="login-body" id="forgot-panel" style="display:none;">
       <h2>Reset Password</h2>
-      <p>Enter your email — a reset link will be generated for you to copy and open.</p>
-      <label class="login-label">Email</label>
-      <input class="login-input" id="fp-email" type="email" placeholder="your@email.com">
-      <button class="login-btn" onclick="doForgot()">Generate reset link</button>
-      <div class="login-err" id="fp-err" style="margin-top:8px;"></div>
-      <div id="fp-link-box" style="display:none;margin-top:12px;background:var(--accent-bg);border:1px solid var(--accent);border-radius:6px;padding:12px;">
-        <div style="font-size:11px;color:var(--accent);font-weight:600;margin-bottom:6px;">RESET LINK (valid 1 hour)</div>
-        <div id="fp-link" style="font-size:11px;word-break:break-all;font-family:monospace;"></div>
-        <button onclick="copyResetLink()" style="margin-top:8px;font-size:11px;padding:4px 10px;background:var(--accent);color:#fff;border:none;border-radius:4px;cursor:pointer;">Copy link</button>
-      </div>
+      <p>For security, password reset links can only be issued by your DataSentry administrator. Please contact them and they will send you a one-time reset link (valid for 1 hour).</p>
       <div style="text-align:center;margin-top:12px;">
         <a onclick="showLogin()" style="font-size:12px;color:var(--accent);cursor:pointer;text-decoration:underline;">Back to sign in</a>
       </div>
@@ -2090,35 +2081,13 @@ function showLogin(){
   document.getElementById("forgot-panel").style.display="none";
   document.getElementById("reset-panel").style.display="none";
 }
-async function doForgot(){
-  const email=document.getElementById("fp-email").value.trim();
-  const errEl=document.getElementById("fp-err");
-  const linkBox=document.getElementById("fp-link-box");
-  errEl.textContent="";linkBox.style.display="none";
-  if(!email){errEl.textContent="Email is required.";return;}
-  const url=document.getElementById("ls-url").value.trim()||window.location.origin;
-  try{
-    const r=await fetch(url+"/auth/forgot-password",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email})});
-    const d=await r.json();
-    if(d.reset_token){
-      const link=window.location.origin+window.location.pathname+"#reset/"+d.reset_token;
-      document.getElementById("fp-link").textContent=link;
-      linkBox.style.display="block";
-    } else {
-      errEl.style.color="var(--ok)";errEl.textContent=d.message||"Check your email.";
-    }
-  }catch(e){errEl.textContent="Error: "+e.message;}
-}
-function copyResetLink(){
-  const txt=document.getElementById("fp-link").textContent;
-  navigator.clipboard.writeText(txt).then(()=>alert("Link copied!")).catch(()=>prompt("Copy this link:",txt));
-}
 async function doReset(){
   const pass=document.getElementById("rp-pass").value;
   const conf=document.getElementById("rp-confirm").value;
   const errEl=document.getElementById("rp-err");
   errEl.textContent="";
   if(!pass){errEl.textContent="Password is required.";return;}
+  if(pass.length<12){errEl.textContent="Password must be at least 12 characters.";return;}
   if(pass!==conf){errEl.textContent="Passwords do not match.";return;}
   const token=window._resetToken;
   const url=document.getElementById("ls-url")?.value.trim()||window.location.origin;
